@@ -1,4 +1,4 @@
-FROM runpod/base:ubuntu-22.04
+FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
 
 # 1. Configurar entorno non-interactive
 ENV DEBIAN_FRONTEND=noninteractive
