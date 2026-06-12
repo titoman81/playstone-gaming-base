@@ -678,12 +678,51 @@ fi
 # Crear directorio server donde va la config
 mkdir -p /opt/moonlight-web/server
 
-# Crear config.json en el path que espera el binario (./server/config.json)
+# Escribir la configuración base válida de moonlight-web-stream
 cat > /opt/moonlight-web/server/config.json << 'MWCFG'
 {
-    "web_server": {
-        "bind_address": "0.0.0.0:30000"
+  "data_storage": {
+    "type": "json",
+    "path": "server/data.json",
+    "session_expiration_check_interval": {
+      "secs": 300,
+      "nanos": 0
     }
+  },
+  "webrtc": {
+    "ice_servers": [{"urls": ["stun:stun.l.google.com:19302"], "username": "", "credential": ""}],
+    "ice_server_script": null,
+    "port_range": null,
+    "nat_1to1": null,
+    "network_types": ["udp4", "udp6"],
+    "include_loopback_candidates": true
+  },
+  "web_server": {
+    "bind_address": "0.0.0.0:30000",
+    "certificate": null,
+    "url_path_prefix": "",
+    "session_cookie_secure": false,
+    "session_cookie_expiration": {
+      "secs": 86400,
+      "nanos": 0
+    },
+    "first_login_create_admin": true,
+    "first_login_assign_global_hosts": true,
+    "default_user_id": null,
+    "default_role_id": null,
+    "forwarded_header": null
+  },
+  "moonlight": {
+    "default_http_port": 47989,
+    "pair_device_name": "roth"
+  },
+  "streamer_path": "./streamer",
+  "log": {
+    "level_filter": "INFO",
+    "file_path": null,
+    "dev_venator": false
+  },
+  "default_settings": null
 }
 MWCFG
 
@@ -692,17 +731,18 @@ if [ -f /tmp/server.key ] && [ -f /tmp/server.crt ]; then
     cp /tmp/server.key /opt/moonlight-web/server/key.pem
     cp /tmp/server.crt /opt/moonlight-web/server/cert.pem
     chmod 644 /opt/moonlight-web/server/*.pem
-    cat > /opt/moonlight-web/server/config.json << 'MWCFGSSL'
-{
-    "web_server": {
-        "bind_address": "0.0.0.0:30000",
-        "certificate": {
-            "private_key_pem": "/opt/moonlight-web/server/key.pem",
-            "certificate_pem": "/opt/moonlight-web/server/cert.pem"
-        }
-    }
+    # Actualizar el json usando python
+    python3 -c "
+import json
+with open('/opt/moonlight-web/server/config.json', 'r') as f:
+    cfg = json.load(f)
+cfg['web_server']['certificate'] = {
+    'private_key_pem': 'server/key.pem',
+    'certificate_pem': 'server/cert.pem'
 }
-MWCFGSSL
+with open('/opt/moonlight-web/server/config.json', 'w') as f:
+    json.dump(cfg, f, indent=2)
+"
 fi
 
 chown -R gamer:gamer /opt/moonlight-web
