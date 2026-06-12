@@ -656,6 +656,7 @@ chmod +x web-server streamer 2>/dev/null || true
 # Descargar GLIBC 2.39 de Ubuntu 24.04 (Noble)
 mkdir -p /opt/glibc239
 echo "deb http://archive.ubuntu.com/ubuntu noble main" > /tmp/noble.list
+apt-get update -o Dir::Etc::sourcelist=/tmp/noble.list -o Dir::Etc::sourceparts=- >/dev/null 2>&1
 NOBLE_VER=$(apt-cache -o Dir::Etc::sourcelist=/tmp/noble.list \
                       -o Dir::Etc::sourceparts=- \
                       show libc6 2>/dev/null | grep ^Version | head -1 | awk '{print $2}')
