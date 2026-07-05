@@ -31,10 +31,10 @@ runpod.api_key   = RUNPOD_API_KEY
 #   1. Crear un Dockerfile en agent/Dockerfile con Steam + Sunshine instalados.
 #   2. docker build -t TU_USUARIO/playstone-gaming:latest .
 #   3. docker push TU_USUARIO/playstone-gaming:latest
-#   4. Actualizar GAMING_IMAGE_ID en .env con tu imagen.
+#   4. Actualizar GAMING_IMAGE_ID en .env con tu imagen (ahora usamos la oficial por defecto).
 GAMING_IMAGE_ID = os.getenv(
     "GAMING_IMAGE_ID",
-    "ghcr.io/titoman81/playstone-gaming-base:main",  # imagen custom basada en josh5/steam-headless
+    "josh5/steam-headless:latest"
 )
 
 SUPABASE_URL     = os.getenv("SUPABASE_URL", "")
@@ -607,24 +607,7 @@ class PlaystoneOrchestrator:
             print(f"[*] Intentando desplegar pod con {current_gpu}...")
             await report_status(session_id, f"Reservando servidor con {current_gpu}...", "provisioning")
             
-            variables = {
-                "input": {
-                    "name":              vm_name,
-                    "imageName":         GAMING_IMAGE_ID,
-                    "gpuTypeId":         current_gpu,
-                    "cloudType":         "ALL",
-                    "countryCode":       "US",
-                    "supportPublicIp":   True,
-                    "startSsh":          True,
-                    "gpuCount":          1,
-                    "ports":             PORTS_STRING,
-                    "volumeInGb":        10,
-                    "volumeMountPath":   "/runpod-volume",
-                    "containerDiskInGb": 100,
-                    "minVcpuCount":      2,
-                    "minMemoryInGb":     8,
-                    "env": [
-                        {"key": "PUBLIC_KEY",    "value": SSH_KEY_PUB},
+            env_vars = [
                         {"key": "SESSION_ID",    "value": session_id or ""},
                         {"key": "SUPABASE_URL",  "value": SUPABASE_URL},
                         {"key": "SUPABASE_KEY",  "value": SUPABASE_KEY},
@@ -637,14 +620,9 @@ class PlaystoneOrchestrator:
                         {"key": "LUTRIS_SLUG",  "value": lutris_slug or ""},
                         {"key": "EPIC_APP_NAME","value": epic_app_name or ""},
                         # ── NVIDIA: habilitar GPU completa para NVENC/Sunshine ────────
-                        # Sin estas variables, RunPod establece NVIDIA_VISIBLE_DEVICES=void
-                        # lo que deshabilita la GPU para los procesos del contenedor,
-                        # forzando a Sunshine a usar software encoding (CPU) y causando lag.
                         {"key": "NVIDIA_VISIBLE_DEVICES",      "value": "all"},
                         {"key": "NVIDIA_DRIVER_CAPABILITIES",  "value": "all"},
                         # -- Steam-Headless: variables nativas de la imagen base ----
-                        # josh5/steam-headless lee estas vars en su entrypoint para
-                        # arrancar Steam, Sunshine y configurar el display virtual.
                         {"key": "ENABLE_STEAM",           "value": "true"},
                         {"key": "ENABLE_SUNSHINE",        "value": "true"},
                         {"key": "SUNSHINE_USER",          "value": "playstone"},
@@ -652,17 +630,32 @@ class PlaystoneOrchestrator:
                         {"key": "FORCE_X11_DUMMY_CONFIG", "value": "true"},
                         {"key": "USER_LOCALES",           "value": "en_US.UTF-8 UTF-8"},
                         {"key": "TZ",                     "value": "UTC"},
-                    ]
+            ]
+            if steam_username: env_vars.append({"key": "STEAM_USERNAME", "value": steam_username})
+            if steam_password: env_vars.append({"key": "STEAM_PASSWORD", "value": steam_password})
+            
+            variables = {
+                "input": {
+                    "name":              vm_name,
+                    "imageName":         GAMING_IMAGE_ID,
+                    "dockerArgs":        "bash -c \"mkdir -p /home/default/init.d && curl -sL https://raw.githubusercontent.com/titoman81/playstone-gaming-base/main/agent/vm_startup.sh > /home/default/init.d/playstone_startup.sh && chmod +x /home/default/init.d/playstone_startup.sh && chown default:default /home/default/init.d/playstone_startup.sh && exec /entrypoint.sh\"",
+                    "gpuTypeId":         current_gpu,
+                    "cloudType":         "ALL",
+                    "countryCode":       "US",
+                    "gpuCount":          1,
+                    "ports":             "30000/tcp,47984/tcp,47989/tcp,47990/tcp,47998/udp,47999/udp,48000/udp",
+                    "volumeInGb":        10,
+                    "volumeMountPath":   "/runpod-volume",
+                    "containerDiskInGb": 100,
+                    "minVcpuCount":      2,
+                    "minMemoryInGb":     8,
+                    "env":               env_vars
                 }
             }
 
-            print(f"[*] Intentando desplegar pod con {current_gpu}...")
-            await report_status(session_id, f"Reservando servidor con {current_gpu}...", "provisioning")
-            
             try:
                 async with httpx.AsyncClient(timeout=30) as client:
                     r = await client.post(self.api_url, json={"query": mutation, "variables": variables}, headers=self.headers)
-                    # Leer body ANTES de raise_for_status para capturar el error detallado
                     try:
                         data = r.json()
                     except Exception:
@@ -736,27 +729,9 @@ class PlaystoneOrchestrator:
 
         # ── Guardar IP + puertos en Supabase ──────────────────────────────────
         await save_vm_info(session_id, pod_id, ip, ssh_port, ml_port, web_port)
-        await report_status(session_id, f"Servidor listo en {ip}. Conectando por SSH...", "provisioning")
+        await report_status(session_id, f"Servidor arrancando en {ip}. Esperando inicialización interna...", "provisioning")
 
-        # ── Bootstrap SSH en hilo separado ───────────────────────────────────
-        env_vars = {
-            "SESSION_ID":    session_id or "",
-            "SUPABASE_URL":  SUPABASE_URL,
-            "SUPABASE_KEY":  SUPABASE_KEY,
-            "STEAM_APP_ID":  steam_app_id,
-            "GAME_NAME":     game_name,
-            "RUNPOD_PUBLIC_IP": ip,
-        }
-        if steam_username: env_vars["STEAM_USERNAME"] = steam_username
-        if steam_password: env_vars["STEAM_PASSWORD"] = steam_password
-        if tailscale_authkey: env_vars["TAILSCALE_AUTHKEY"] = tailscale_authkey
-
-        t = threading.Thread(
-            target=_ssh_bootstrap,
-            args=(session_id, ip, ssh_port, env_vars),
-            daemon=True
-        )
-        t.start()
+        # No SSH bootstrap needed. The dockerArgs injection handles it!
         return pod_id
 
 
