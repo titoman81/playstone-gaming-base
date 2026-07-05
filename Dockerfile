@@ -9,18 +9,30 @@ RUN curl -fsSL https://tailscale.com/install.sh | sh
 RUN sed -i 's/return 1/return 0/g' /etc/cont-init.d/60-configure_gpu_driver.sh && \
     sed -i 's/exit 1/exit 0/g' /etc/cont-init.d/60-configure_gpu_driver.sh
 
-# Create a fake nvidia-xconfig to satisfy 70-configure_xorg.sh since RunPod doesn't provide it
+# Create a fake nvidia-xconfig to satisfy 70-configure_xorg.sh since RunPod doesn't provide it.
+# We hardcode a robust headless configuration since we ignore its arguments.
 RUN echo '#!/bin/bash' > /usr/bin/nvidia-xconfig && \
     echo 'cat << "EOF" > /etc/X11/xorg.conf' >> /usr/bin/nvidia-xconfig && \
+    echo 'Section "ServerLayout"' >> /usr/bin/nvidia-xconfig && \
+    echo '    Identifier     "Layout0"' >> /usr/bin/nvidia-xconfig && \
+    echo '    Screen      0  "Screen0" 0 0' >> /usr/bin/nvidia-xconfig && \
+    echo 'EndSection' >> /usr/bin/nvidia-xconfig && \
     echo 'Section "Device"' >> /usr/bin/nvidia-xconfig && \
     echo '    Identifier     "Device0"' >> /usr/bin/nvidia-xconfig && \
     echo '    Driver         "nvidia"' >> /usr/bin/nvidia-xconfig && \
     echo '    VendorName     "NVIDIA Corporation"' >> /usr/bin/nvidia-xconfig && \
+    echo '    Option         "AllowEmptyInitialConfiguration" "True"' >> /usr/bin/nvidia-xconfig && \
+    echo '    Option         "PrimaryGPU" "yes"' >> /usr/bin/nvidia-xconfig && \
     echo 'EndSection' >> /usr/bin/nvidia-xconfig && \
     echo 'Section "Screen"' >> /usr/bin/nvidia-xconfig && \
     echo '    Identifier     "Screen0"' >> /usr/bin/nvidia-xconfig && \
     echo '    Device         "Device0"' >> /usr/bin/nvidia-xconfig && \
     echo '    DefaultDepth    24' >> /usr/bin/nvidia-xconfig && \
+    echo '    Option         "AllowEmptyInitialConfiguration" "True"' >> /usr/bin/nvidia-xconfig && \
+    echo '    SubSection     "Display"' >> /usr/bin/nvidia-xconfig && \
+    echo '        Depth       24' >> /usr/bin/nvidia-xconfig && \
+    echo '        Virtual     1920 1080' >> /usr/bin/nvidia-xconfig && \
+    echo '    EndSubSection' >> /usr/bin/nvidia-xconfig && \
     echo 'EndSection' >> /usr/bin/nvidia-xconfig && \
     echo 'EOF' >> /usr/bin/nvidia-xconfig && \
     chmod +x /usr/bin/nvidia-xconfig
