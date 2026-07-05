@@ -54,21 +54,22 @@ if [ -n "$TAILSCALE_AUTHKEY" ]; then
     report_status "Conectando a red privada Tailscale..." "provisioning"
 
     # Arrancar tailscaled en modo userspace (no requiere /dev/net/tun en Docker)
-    mkdir -p /var/run/tailscale
+    mkdir -p ~/.tailscale
     tailscaled --tun=userspace-networking \
                --socks5-server=localhost:1055 \
                --outbound-http-proxy-listen=localhost:1055 \
-               > /tmp/tailscaled.log 2>&1 &
+               --socket=~/.tailscale/tailscaled.sock \
+               > ~/.tailscale/tailscaled.log 2>&1 &
     sleep 5
 
-    tailscale up \
+    tailscale --socket=~/.tailscale/tailscaled.sock up \
         --authkey="$TAILSCALE_AUTHKEY" \
         --hostname="playstone-${SESSION_ID:0:6}" \
         --accept-routes \
         --reset
     sleep 3
 
-    TS_IP=$(tailscale ip -4 2>/dev/null || echo "")
+    TS_IP=$(tailscale --socket=~/.tailscale/tailscaled.sock ip -4 2>/dev/null || echo "")
     if [ -n "$TS_IP" ]; then
         echo "[OK] Tailscale conectado. IP: $TS_IP"
         curl -s -X PATCH "${SUPABASE_URL}/rest/v1/sessions?id=eq.${SESSION_ID}" \
