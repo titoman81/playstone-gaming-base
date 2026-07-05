@@ -43,12 +43,12 @@ report_status "Servidor arrancando (Steam-Headless)..." "provisioning"
 
 # Force sunshine to use X11 capture to avoid KMS segfaults on virtual displays
 echo "[INIT] Aplicando fix de captura X11 para Sunshine..."
-mkdir -p /home/gamer/.config/sunshine
-if [ -f /home/gamer/.config/sunshine/sunshine.conf ]; then
-    sed -i '/capture =/d' /home/gamer/.config/sunshine/sunshine.conf
+mkdir -p /home/default/.config/sunshine
+if [ -f /home/default/.config/sunshine/sunshine.conf ]; then
+    sed -i '/capture =/d' /home/default/.config/sunshine/sunshine.conf
 fi
-echo "capture = x11" >> /home/gamer/.config/sunshine/sunshine.conf
-chown -R gamer:gamer /home/gamer/.config/sunshine
+echo "capture = x11" >> /home/default/.config/sunshine/sunshine.conf
+chown -R default:default /home/default/.config/sunshine
 
 if [ -n "$TAILSCALE_AUTHKEY" ]; then
     echo "[INIT] Conectando Tailscale..."
