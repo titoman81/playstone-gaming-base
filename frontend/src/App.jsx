@@ -32,15 +32,13 @@ function App() {
   const [activeServers, setActiveServers] = useState(0)
   const [isAdminView, setIsAdminView] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  // Modal de Steam reactivo (aparece cuando la VM lo pide)
-  const [showSteamModal, setShowSteamModal] = useState(false)
-  const [steamWaitMode, setSteamWaitMode] = useState('credentials') // 'credentials' | '2fa'
-  const [steamCredentials, setSteamCredentials] = useState({ username: '', password: '' })
-  const [steamAuthCode, setSteamAuthCode] = useState('')
-  const [steamError, setSteamError] = useState(null)
-  const [steamSubmitting, setSteamSubmitting] = useState(false)
-  const [rememberSteam, setRememberSteam] = useState(false)
+  // Estado de la UI
   const [preLaunchGameId, setPreLaunchGameId] = useState(null)
+  const [tailscaleAuthKey, setTailscaleAuthKey] = useState('')
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [settingsSubmitting, setSettingsSubmitting] = useState(false)
+  const [settingsError, setSettingsError] = useState(null)
+  
   // Timeout: si provisioning supera 2 min sin cambio de status_message, avisamos al usuario
   const [provisioningTimeout, setProvisioningTimeout] = useState(false)
   const [lastStatusMessage, setLastStatusMessage] = useState(null)
@@ -68,21 +66,11 @@ function App() {
       .eq('id', userId)
       .single()
     setUserData(data)
-    // Pre-rellenar credenciales guardadas para ahorrar tiempo al usuario
-    if (data?.metadata?.steam_username && data?.metadata?.steam_password) {
-      setSteamCredentials({
-        username: data.metadata.steam_username,
-        password: data.metadata.steam_password
-      })
-      setRememberSteam(true)
+    setUserData(data)
+    if (data?.metadata?.tailscale_authkey) {
+      setTailscaleAuthKey(data.metadata.tailscale_authkey)
     }
   }
-
-  // Reaccionar cuando la VM entra en waiting_steam_auth — detectar modo automáticamente
-  useEffect(() => {
-    // La aprobación de código de Steam (2FA) ha sido desactivada temporalmente a petición del usuario.
-    setShowSteamModal(false)
-  }, [session?.status, session?.status_message])
 
   // ── Detector de timeout: si el mensaje no cambia en 2 minutos durante provisioning ─
   useEffect(() => {
@@ -101,17 +89,27 @@ function App() {
 
   useEffect(() => {
     let interval = null;
+    let pollInterval = null;
     // Cronómetro activo en todos los estados de espera/instalación
     const waitingStatuses = ['pending', 'provisioning', 'loading_save', 'waiting_steam_auth'];
     if (session && waitingStatuses.includes(session.status)) {
       interval = setInterval(() => {
         setElapsedSeconds(prev => prev + 1);
       }, 1000);
+      
+      // Fallback: Consultar a la base de datos cada 10 segundos por si el socket se desconecta
+      pollInterval = setInterval(() => {
+        checkActiveSession();
+      }, 10000);
     } else {
       setElapsedSeconds(0);
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
+      if (pollInterval) clearInterval(pollInterval);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+      if (pollInterval) clearInterval(pollInterval);
+    };
   }, [session?.status]);
 
   useEffect(() => {
@@ -142,6 +140,12 @@ function App() {
       supabase.removeChannel(sessionSubscription)
     }
   }, [authSession])
+
+  // NOTA: Eliminado el handler 'beforeunload' que mataba la sesión al recargar.
+  // El pod solo se termina cuando el usuario hace clic en el botón "Detener" explícitamente.
+  // Si el usuario recarga o cierra accidentalmente, la sesión se reconecta automáticamente
+  // gracias a checkActiveSession() que corre al iniciar la app.
+
 
   const fetchGames = async () => {
     const { data } = await supabase.from('games').select('*')
@@ -178,10 +182,8 @@ function App() {
     if (activeServers >= 8 || !authSession || loading) return
 
     // Pre-launch credentials check
-    if (!steamCredentials.username || !steamCredentials.password) {
-      setPreLaunchGameId(gameId)
-      setSteamWaitMode('credentials')
-      setShowSteamModal(true)
+    if (!tailscaleAuthKey) {
+      setShowSettingsModal(true)
       return
     }
 
@@ -191,13 +193,13 @@ function App() {
     setProvisioningTimeout(false)
 
     try {
-      // Limpiar sesiones anteriores de este usuario que estén en 'failed' o 'completed'
-      // para garantizar un SESSION_ID fresco sin conflictos con pods anteriores.
+      // Limpiar TODAS las sesiones anteriores de este usuario
+      // para garantizar un SESSION_ID fresco y que el orquestador elimine pods huerfanos.
       await supabase
         .from('sessions')
         .update({ status: 'completed' })
         .eq('user_id', authSession.user.id)
-        .in('status', ['failed', 'completed'])
+        .in('status', ['pending', 'provisioning', 'loading_save', 'playing', 'waiting_steam_auth', 'failed'])
 
       const { data, error: rpcErr } = await supabase.rpc('allocate_game_session', {
         p_game_id: gameId,
@@ -208,8 +210,7 @@ function App() {
 
       // Update session with credentials immediately
       await supabase.from('sessions').update({
-        steam_username: steamCredentials.username,
-        steam_password: steamCredentials.password
+        tailscale_authkey: tailscaleAuthKey
       }).eq('id', sessionId)
 
       const { data: newSession } = await supabase
@@ -222,88 +223,34 @@ function App() {
     }
   }
 
-  // Enviar credenciales a Supabase para que la VM las recoja o antes de crear la sesión
-  const handleSteamCredentialsSubmit = async () => {
-    if (!steamCredentials.username.trim() || !steamCredentials.password.trim()) {
-      setSteamError('Ingresa tu usuario y contraseña de Steam.')
-      return
-    }
-    setSteamError(null)
-    setSteamSubmitting(true)
+  const handleSettingsSubmit = async () => {
+    setSettingsSubmitting(true)
+    setSettingsError(null)
     try {
-      if (session) {
-        await supabase.from('sessions').update({
-          steam_username: steamCredentials.username.trim(),
-          steam_password: steamCredentials.password,
-        }).eq('id', session.id)
-      }
-
-      // Guardar credenciales si el usuario lo pidió o si estamos en pre-launch
-      if (rememberSteam || (!session && preLaunchGameId)) {
-        await supabase.from('users').update({
-          metadata: { ...userData?.metadata, steam_username: steamCredentials.username.trim(), steam_password: steamCredentials.password }
-        }).eq('id', authSession.user.id)
-        setUserData(prev => ({ ...prev, metadata: { ...prev?.metadata, steam_username: steamCredentials.username.trim(), steam_password: steamCredentials.password } }))
-      }
-
-      // Si estamos en pre-launch, creamos la sesión ahora
-      if (!session && preLaunchGameId) {
-        const { data, error: rpcErr } = await supabase.rpc('allocate_game_session', {
-          p_game_id: preLaunchGameId,
-          p_user_id: authSession.user.id
+      const { error } = await supabase
+        .from('users')
+        .update({ 
+          metadata: { ...userData?.metadata, tailscale_authkey: tailscaleAuthKey } 
         })
-        if (rpcErr) throw rpcErr
-        const sessionId = data[0].session_id
-        
-        await supabase.from('sessions').update({
-          steam_username: steamCredentials.username.trim(),
-          steam_password: steamCredentials.password,
-        }).eq('id', sessionId)
-
-        const { data: newSession } = await supabase
-          .from('sessions').select('*').eq('id', sessionId).single()
-        setSession(newSession)
-        
-        setShowSteamModal(false)
-        setPreLaunchGameId(null)
-        setSteamSubmitting(false)
-        return
-      }
-
-      // El modal se cerrará cuando la VM cambie el status (via realtime)
-      // Mantenemos steamSubmitting=true para que el usuario vea el loader hasta que la VM cambie el status
+        .eq('id', authSession.user.id)
+      if (error) throw error
+      setUserData(prev => ({ ...prev, metadata: { ...prev?.metadata, tailscale_authkey: tailscaleAuthKey } }))
+      setShowSettingsModal(false)
     } catch (err) {
-      setSteamError(err.message || 'Error al enviar credenciales')
-      setSteamSubmitting(false)
+      setSettingsError('Error al guardar: ' + err.message)
+    } finally {
+      setSettingsSubmitting(false)
     }
   }
-
-  // Enviar código 2FA a Supabase para que la VM lo recoja
-  const handleSteam2FASubmit = async () => {
-    if (!steamAuthCode.trim()) {
-      setSteamError('Ingresa el código de autenticación.')
-      return
-    }
-    setSteamError(null)
-    setSteamSubmitting(true)
-    try {
-      await supabase.from('sessions').update({
-        steam_2fa_code: steamAuthCode.trim(),
-      }).eq('id', session.id)
-      setSteamAuthCode('')
-      // Mantenemos steamSubmitting=true hasta que la VM procese el código y cambie el estado
-    } catch (err) {
-      setSteamError(err.message || 'Error al enviar el código')
-      setSteamSubmitting(false)
-    }
-  }
-
-  // (handle2FASubmit eliminado — reemplazado por handleSteam2FASubmit en modal unificado)
 
   const [moonlightPin, setMoonlightPin] = useState('')
   const [pairingLoading, setPairingLoading] = useState(false)
-
-  // ... (existing code)
+  // pinSent persiste en sessionStorage para sobrevivir recargas dentro de la misma sesión
+  const [pinSent, setPinSent] = useState(() => {
+    try { return sessionStorage.getItem('pinSent') === 'true' } catch { return false }
+  })
+  const [pinCountdown, setPinCountdown] = useState(0)
+  const [pinPaired, setPinPaired] = useState(false)
 
   const handlePairMoonlight = async () => {
     if (!moonlightPin.trim() || moonlightPin.length < 4) {
@@ -319,7 +266,39 @@ function App() {
       
       if (error) throw error
       setMoonlightPin('')
-      alert('¡PIN enviado! Tu servidor se emparejará en unos segundos.')
+      setPinSent(true)
+      try { sessionStorage.setItem('pinSent', 'true') } catch {}
+
+      // Cuenta regresiva de 4s para que Sunshine autorice el dispositivo
+      let count = 4
+      setPinCountdown(count)
+      const countdown = setInterval(() => {
+        count -= 1
+        setPinCountdown(count)
+        if (count <= 0) {
+          clearInterval(countdown)
+          // Refrescar sesión para ver si el orquestador ya confirmó el emparejamiento
+          checkActiveSession()
+        }
+      }, 1000)
+
+      // Polling cada 3s durante 30s para detectar cuándo el orquestador limpió el PIN
+      let pollCount = 0
+      const pollPaired = setInterval(async () => {
+        pollCount++
+        const { data } = await supabase
+          .from('sessions')
+          .select('moonlight_pin')
+          .eq('id', session.id)
+          .single()
+        // El orquestador borra el pin a null cuando lo procesa con éxito
+        if (data && (data.moonlight_pin === null || data.moonlight_pin === '')) {
+          setPinPaired(true)
+          clearInterval(pollPaired)
+          try { sessionStorage.removeItem('pinSent') } catch {}
+        }
+        if (pollCount >= 10) clearInterval(pollPaired)
+      }, 3000)
     } catch (err) {
       alert('Error al enviar el PIN: ' + err.message)
     } finally {
@@ -327,7 +306,7 @@ function App() {
     }
   }
 
-  const handleStopSession = async () => {
+  const handleDestroySession = async () => {
     if (!session) return;
     setLoading(true)
     try {
@@ -340,6 +319,25 @@ function App() {
       setSession(null)
     } catch (err) {
       setError('Error al finalizar la sesión')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSleepSession = async () => {
+    if (!session) return;
+    setLoading(true)
+    try {
+      const { error } = await supabase
+        .from('sessions')
+        .update({ status: 'sleeping_requested' })
+        .eq('id', session.id)
+
+      if (error) throw error
+      // The local status will update via Realtime, but we can set it locally for faster UI
+      setSession(prev => ({ ...prev, status: 'sleeping_requested' }))
+    } catch (err) {
+      setError('Error al dormir la sesión')
     } finally {
       setLoading(false)
     }
@@ -473,8 +471,8 @@ function App() {
     const game = games.find(g => g.id === session.game_id);
     const gameName = game ? game.name : 'Unknown Game';
     
-    // RunPod public IP (almacenada como ip_address tras bootstrap SSH) — sin VPN, directa
-    const connectIp = session.ip_address
+    // RunPod public IP (almacenada como ip_address tras bootstrap SSH)
+    const connectIp = session.tailscale_ip || session.ip_address
       || (session.status_message && session.status_message.match(/[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}/)?.[0]);
     const extractedIp = connectIp;
     
@@ -497,10 +495,20 @@ function App() {
               </div>
               <div className="h-4 w-[1px] bg-violet-500/30 mx-1"></div>
               <button 
-                onClick={handleStopSession}
-                className="text-white font-inter font-bold uppercase tracking-widest text-[10px] py-1.5 px-3 rounded-full hover:bg-red-500/20 hover:text-red-400 transition-colors flex items-center gap-1"
+                onClick={handleSleepSession}
+                title="Pausa el servidor. El juego iniciará rápido la próxima vez, pero RunPod cobrará por el almacenamiento ($0.15/día aprox)."
+                className="text-white font-inter font-bold uppercase tracking-widest text-[10px] py-1.5 px-3 rounded-full hover:bg-yellow-500/20 hover:text-yellow-400 transition-colors flex items-center gap-1 border border-transparent hover:border-yellow-500/30"
               >
-                  END SESSION
+                  <span className="material-symbols-outlined text-[14px]">bedtime</span>
+                  DORMIR SERVIDOR
+              </button>
+              <button 
+                onClick={handleDestroySession}
+                title="Elimina el servidor por completo. No se cobrará nada, pero la próxima sesión requerirá reinstalar."
+                className="text-white font-inter font-bold uppercase tracking-widest text-[10px] py-1.5 px-3 rounded-full hover:bg-red-500/20 hover:text-red-400 transition-colors flex items-center gap-1 border border-transparent hover:border-red-500/30"
+              >
+                  <span className="material-symbols-outlined text-[14px]">delete</span>
+                  DESTRUIR SERVIDOR
               </button>
             </div>
           </nav>
@@ -517,8 +525,8 @@ function App() {
               <h3 className="text-white font-bold text-lg">Tu Servidor Sunshine está listo</h3>
               
               <div className="w-full bg-black/40 rounded-xl p-4 my-2 border border-white/5">
-                <p className="text-gray-400 text-[10px] uppercase tracking-widest mb-1">Abre Moonlight y agrega esta IP:</p>
-                <code className="text-[#FF4500] font-mono text-xl">{extractedIp}</code>
+                <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-widest mb-1">Abre Moonlight y agrega esta IP de Tailscale:</p>
+                <code className="text-[#FF4500] font-mono text-xl block mt-2">{extractedIp}</code>
               </div>
 
               {session.web_url && (
@@ -533,10 +541,47 @@ function App() {
                 </a>
               )}
 
-              {session.moonlight_pin ? (
-                <div className="w-full bg-green-500/10 border border-green-500/30 rounded-xl p-4 animate-pulse mt-4">
-                  <p className="text-green-400 font-bold text-sm">PIN Enviado ✓</p>
-                  <p className="text-gray-400 text-xs mt-1">El servidor está autorizando tu dispositivo...</p>
+              {pinPaired ? (
+                <div className="w-full bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 mt-4 flex flex-col items-center gap-3">
+                  <p className="text-emerald-400 font-bold text-sm flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px]" style={{fontVariationSettings: "'FILL' 1"}}>verified</span>
+                    ¡Dispositivo emparejado con éxito!
+                  </p>
+                  {session.web_url && (
+                    <a
+                      href={session.web_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl font-bold uppercase tracking-widest text-xs transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">sports_esports</span>
+                      Abrir Moonlight Web
+                    </a>
+                  )}
+                </div>
+              ) : pinSent ? (
+                <div className="w-full bg-green-500/10 border border-green-500/30 rounded-xl p-4 mt-4 flex flex-col items-center gap-3">
+                  <p className="text-green-400 font-bold text-sm flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px]" style={{fontVariationSettings: "'FILL' 1"}}>check_circle</span>
+                    PIN Enviado — Autorizando dispositivo...
+                  </p>
+                  {pinCountdown > 0 ? (
+                    <p className="text-gray-400 text-xs">
+                      Verificando emparejamiento en <strong className="text-white">{pinCountdown}s</strong>...
+                    </p>
+                  ) : (
+                    session.web_url && (
+                      <a
+                        href={session.web_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl font-bold uppercase tracking-widest text-xs transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                        Abrir Moonlight Web
+                      </a>
+                    )
+                  )}
                 </div>
               ) : (
                 <div className="w-full mt-4">
@@ -640,45 +685,7 @@ function App() {
                   CANCELAR Y VOLVER AL MENÚ
                 </button>
               </>
-            ) : session.status === 'waiting_steam_auth' ? (
-              <div className="flex flex-col items-center gap-6 p-8 rounded-2xl bg-violet-900/20 border border-violet-500/30 max-w-md w-full animate-fade-in z-50">
-                <span className="material-symbols-outlined text-[64px] text-violet-400 animate-pulse">security</span>
-                <div className="text-center">
-                  <h2 className="font-display-md text-white text-xl font-bold">Steam Guard Requerido</h2>
-                  <p className="text-gray-400 text-sm mt-2 leading-relaxed">Por favor, revisa tu correo electrónico o la app móvil de Steam e introduce el código de acceso.</p>
-                </div>
-                
-                <div className="flex flex-col gap-3 w-full">
-                  <input 
-                    type="text" 
-                    id="steam_guard_input"
-                    placeholder="Ej: AB12C"
-                    className="w-full bg-black/50 border border-violet-500/30 rounded-xl px-4 py-3 text-white font-mono text-center text-2xl tracking-[0.2em] uppercase focus:border-violet-500 focus:outline-none transition-colors"
-                    maxLength={5}
-                    autoComplete="off"
-                  />
-                  <button 
-                    onClick={async () => {
-                      const code = document.getElementById('steam_guard_input').value.trim().toUpperCase();
-                      if (!code) return;
-                      await supabase.from('sessions').update({ steam_2fa_code: code, status_message: 'Validando código 2FA...' }).eq('id', session.id);
-                    }}
-                    className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl font-bold uppercase tracking-widest text-xs hover:from-violet-500 hover:to-indigo-500 transition-all shadow-[0_0_20px_rgba(139,92,246,0.3)] active:scale-95 mt-2"
-                  >
-                    ENVIAR CÓDIGO
-                  </button>
-                  <button 
-                    onClick={async () => {
-                      await supabase.from('sessions').update({ status: 'completed' }).eq('id', session.id);
-                      setSession(null);
-                    }}
-                    className="w-full py-3 mt-2 bg-white/5 border border-white/10 hover:bg-red-500/10 hover:border-red-500/20 hover:text-red-400 text-gray-300 rounded-xl font-bold uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2"
-                  >
-                    <span className="material-symbols-outlined text-sm">close</span>
-                    CANCELAR
-                  </button>
-                </div>
-              </div>
+
             ) : session.status === 'failed' ? (
               <div className="flex flex-col items-center gap-6 p-8 rounded-2xl bg-error-container/10 border border-error/20 max-w-md w-full">
                 <span className="material-symbols-outlined text-[64px] text-red-500 animate-pulse" style={{fontVariationSettings: "'FILL' 1"}}>error</span>
@@ -694,22 +701,6 @@ function App() {
                   >
                     <span className="material-symbols-outlined text-sm animate-spin" style={{ animationDuration: '3s' }}>build</span>
                     REINTENTAR / REPARAR INSTALACIÓN
-                  </button>
-                  <button 
-                    onClick={async () => {
-                      if (window.confirm('Esto borrará los datos de Steam guardados en tu cuenta. ¿Continuar?')) {
-                        await supabase.from('users').update({ metadata: { ...userData?.metadata, steam_username: null, steam_password: null } }).eq('id', authSession.user.id);
-                        setUserData(prev => ({ ...prev, metadata: { ...prev?.metadata, steam_username: null, steam_password: null } }));
-                        setSteamCredentials({username: '', password: ''});
-                        setRememberSteam(false);
-                        await supabase.from('sessions').update({ status: 'completed' }).eq('id', session.id);
-                        setSession(null);
-                      }
-                    }}
-                    className="w-full py-3.5 bg-white/5 border border-white/10 text-gray-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 rounded-xl font-bold uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2"
-                  >
-                    <span className="material-symbols-outlined text-sm">account_circle_off</span>
-                    BORRAR CREDENCIALES Y CANCELAR
                   </button>
                   
                   <button 
@@ -885,159 +876,56 @@ function App() {
   return (
     <div className="bg-background text-on-background font-body-base overflow-x-hidden min-h-screen selection:bg-primary-container selection:text-on-primary-container">
 
-      {/* ── MODAL UNIFICADO: STEAM AUTH (aparece cuando la VM lo solicita) ── */}
-      {showSteamModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4"
-             style={{background: 'rgba(0,0,0,0.90)', backdropFilter: 'blur(16px)'}}>
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 shadow-[0_0_80px_rgba(102,192,244,0.25)] overflow-hidden"
-               style={{background: 'linear-gradient(135deg, #1b2838 0%, #0d1117 100%)'}}>
-
-            {/* Header */}
+      {/* ── SETTINGS MODAL ── */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowSettingsModal(false)}></div>
+          <div className="relative w-full max-w-md bg-[#121212] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-white/10 flex items-center gap-3">
-              <span className="text-3xl">{steamWaitMode === '2fa' ? '🔐' : '🎮'}</span>
+              <span className="text-3xl">⚙️</span>
               <div className="flex-1">
-                <h2 className="text-white font-bold text-lg leading-none">
-                  {steamWaitMode === '2fa' ? 'Steam Guard — 2FA' : 'Iniciar sesión en Steam'}
-                </h2>
-                <p className="text-[#66c0f4] text-xs mt-1">
-                  {steamWaitMode === '2fa'
-                    ? 'Tu servidor está listo, solo falta verificar'
-                    : 'La VM necesita tus credenciales para descargar el juego'}
-                </p>
+                <h2 className="text-white font-bold text-lg leading-none">Configuración de Cuenta</h2>
+                <p className="text-gray-400 text-xs mt-1">Configura tu red privada para conectarte a los servidores</p>
               </div>
             </div>
-
-            {/* Body */}
             <div className="p-6 space-y-4">
-
-              {/* Mensaje de la VM */}
-              {session?.status_message && (
-                <div className="px-3 py-2 rounded-lg bg-[#66c0f4]/10 border border-[#66c0f4]/20">
-                  <p className="text-[#66c0f4] text-xs">{session.status_message}</p>
-                </div>
-              )}
-
-              {/* ── MODO: CREDENCIALES ── */}
-              {steamWaitMode === 'credentials' && (<>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-widest text-gray-400 mb-2">
-                    Usuario de Steam
-                  </label>
-                  <input
-                    id="steam-username-input"
-                    type="text"
-                    autoComplete="username"
-                    autoFocus
-                    value={steamCredentials.username}
-                    onChange={e => setSteamCredentials(p => ({...p, username: e.target.value}))}
-                    onKeyDown={e => e.key === 'Enter' && handleSteamCredentialsSubmit()}
-                    placeholder="tu_usuario"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-[#66c0f4]/50 focus:shadow-[0_0_15px_rgba(102,192,244,0.15)] transition-all placeholder:text-gray-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-widest text-gray-400 mb-2">
-                    Contraseña de Steam
-                  </label>
-                  <input
-                    id="steam-password-input"
-                    type="password"
-                    autoComplete="current-password"
-                    value={steamCredentials.password}
-                    onChange={e => setSteamCredentials(p => ({...p, password: e.target.value}))}
-                    onKeyDown={e => e.key === 'Enter' && handleSteamCredentialsSubmit()}
-                    placeholder="••••••••"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-[#66c0f4]/50 focus:shadow-[0_0_15px_rgba(102,192,244,0.15)] transition-all placeholder:text-gray-600"
-                  />
-                </div>
-                <div className="flex items-center gap-3 px-1">
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      checked={rememberSteam}
-                      onChange={e => setRememberSteam(e.target.checked)}
-                    />
-                    <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#1a9fff]"></div>
-                    <span className="ml-3 text-[11px] font-medium text-gray-400 uppercase tracking-widest">Recordar credenciales</span>
-                  </label>
-                </div>
-                <p className="text-gray-600 text-[10px] leading-relaxed">
-                  🔒 Tus credenciales se envían directamente a tu servidor dedicado y se eliminan al terminar la sesión.
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-emerald-400 mb-2">
+                  Tailscale Auth Key (Red Privada)
+                </label>
+                <input
+                  type="password"
+                  value={tailscaleAuthKey}
+                  onChange={e => setTailscaleAuthKey(e.target.value)}
+                  placeholder="tskey-auth-..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-emerald-500/50 focus:shadow-[0_0_15px_rgba(16,185,129,0.15)] transition-all placeholder:text-gray-600 mb-2"
+                />
+                <p className="text-gray-500 text-[10px] leading-relaxed">
+                  Obtén tu Auth Key en <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">tailscale.com</a>. Esto conectará el servidor a tu propia red VPN de forma segura.
                 </p>
-              </>)}
-
-              {/* ── MODO: 2FA ── */}
-              {steamWaitMode === '2fa' && (<>
-                <div className="px-3 py-2 rounded-xl bg-[#66c0f4]/10 border border-[#66c0f4]/20 text-center">
-                  <p className="text-[#66c0f4] text-xs font-medium">
-                    📱 Abre la app Steam Guard en tu teléfono y copia el código de 5 letras.
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-widest text-gray-400 mb-2">
-                    Código Steam Guard
-                  </label>
-                  <input
-                    id="steam-2fa-input"
-                    type="text"
-                    autoFocus
-                    maxLength={8}
-                    value={steamAuthCode}
-                    onChange={e => setSteamAuthCode(e.target.value.toUpperCase())}
-                    onKeyDown={e => e.key === 'Enter' && handleSteam2FASubmit()}
-                    placeholder="XXXXX"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-xl font-mono tracking-[0.4em] outline-none focus:border-[#66c0f4]/50 focus:shadow-[0_0_15px_rgba(102,192,244,0.15)] transition-all placeholder:text-gray-600"
-                  />
-                </div>
-              </>)}
-
-              {/* Spinner de envío */}
-              {steamSubmitting && (
-                <div className="flex items-center justify-center gap-2 py-2">
-                  <svg className="animate-spin h-5 w-5 text-[#66c0f4]" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                  </svg>
-                  <span className="text-[#66c0f4] text-sm">Enviando a tu servidor...</span>
-                </div>
-              )}
-
-              {/* Error */}
-              {steamError && (
+              </div>
+              
+              {settingsError && (
                 <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                  {steamError}
+                  {settingsError}
                 </p>
               )}
             </div>
-
-            {/* Footer */}
-            {!steamSubmitting && (
-              <div className="p-6 pt-0 flex gap-3">
-                <button
-                  onClick={async () => {
-                    if (preLaunchGameId) {
-                      setShowSteamModal(false);
-                      setPreLaunchGameId(null);
-                      return;
-                    }
-                    if (!window.confirm('¿Estás seguro de que deseas cancelar la sesión? El servidor dedicado ya está encendido. Si cancelas ahora, la máquina virtual se destruirá automáticamente.')) return;
-                    await supabase.from('sessions').update({ status: 'completed' }).eq('id', session.id);
-                    setSession(null);
-                    setShowSteamModal(false);
-                  }}
-                  className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 text-gray-400 font-bold uppercase tracking-widest text-xs transition-all flex-1"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={steamWaitMode === '2fa' ? handleSteam2FASubmit : handleSteamCredentialsSubmit}
-                  className="px-4 py-2 rounded-lg bg-[#1a9fff] hover:bg-[#66c0f4] text-white font-bold uppercase tracking-widest text-xs transition-all flex-1 shadow-[0_0_15px_rgba(102,192,244,0.3)] hover:shadow-[0_0_25px_rgba(102,192,244,0.5)]"
-                >
-                  {steamWaitMode === '2fa' ? 'Verificar' : 'Continuar'}
-                </button>
-              </div>
-            )}
+            <div className="p-6 pt-0 flex gap-3">
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 font-bold uppercase tracking-widest text-xs transition-all flex-1"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSettingsSubmit}
+                disabled={settingsSubmitting}
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold uppercase tracking-widest text-xs transition-all flex-1 shadow-[0_0_15px_rgba(16,185,129,0.3)] disabled:opacity-50"
+              >
+                {settingsSubmitting ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1089,6 +977,10 @@ function App() {
             <span className="material-symbols-outlined text-[20px]">explore</span>
             Explore
           </a>
+          <button onClick={() => setShowSettingsModal(true)} className="flex items-center gap-3 text-gray-500 px-4 py-3 hover:text-gray-200 hover:bg-[#1E1E1E] rounded-lg transition-all duration-200 font-inter text-sm font-semibold text-left w-full">
+            <span className="material-symbols-outlined text-[20px]" style={{fontVariationSettings: "'FILL' 1"}}>settings</span>
+            Configuración
+          </button>
         </div>
         <div className="px-6 mt-auto">
           <button className="w-full py-2 mb-stack-md bg-transparent border border-primary text-primary hover:bg-primary/10 rounded font-label-caps tracking-widest text-xs transition-colors">
@@ -1103,6 +995,14 @@ function App() {
           <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-error-container border border-error text-on-error-container px-6 py-3 rounded-lg shadow-lg flex items-center gap-2">
             <span className="material-symbols-outlined">error</span>
             {error}
+          </div>
+        )}
+
+        {!tailscaleAuthKey && (!session || session.status === 'completed') && (
+          <div className="absolute top-0 left-0 w-full z-40 bg-red-500/90 border-b border-red-700 text-white px-6 py-2 shadow-lg flex items-center justify-center gap-2 backdrop-blur-md font-bold text-sm transition-all">
+            <span className="material-symbols-outlined text-[18px]">warning</span>
+            <span>¡Atención! Debes configurar tu Tailscale Auth Key en tu cuenta para poder iniciar juegos.</span>
+            <button onClick={() => setShowSettingsModal(true)} className="ml-4 px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-xs transition-colors shadow">Configurar</button>
           </div>
         )}
 
@@ -1149,7 +1049,18 @@ function App() {
                 <h2 className="font-headline-md text-on-surface">Available Games</h2>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-gutter">
-                {games.map((game, i) => (
+                {games.map((game, i) => {
+                  // Badge por launcher
+                  const launcherConfig = {
+                    steam:    { label: 'Steam',    color: 'from-[#1b2838] to-[#2a475e]', border: 'border-[#66c0f4]/40', text: 'text-[#66c0f4]', icon: '🎮' },
+                    epic:     { label: 'Epic',     color: 'from-[#2d0036] to-[#0d0d0d]', border: 'border-purple-500/40', text: 'text-purple-400',   icon: '⚡' },
+                    gog:      { label: 'GOG',      color: 'from-[#220000] to-[#1a0a00]', border: 'border-orange-500/40', text: 'text-orange-400',   icon: '🔮' },
+                    lutris:   { label: 'Lutris',   color: 'from-[#1a1200] to-[#0d0d0d]', border: 'border-yellow-500/40', text: 'text-yellow-400',   icon: '🦅' },
+                    emulator: { label: 'Emulator', color: 'from-[#001a12] to-[#0d0d0d]', border: 'border-emerald-500/40', text: 'text-emerald-400', icon: '🕹️' },
+                  };
+                  const launcher = launcherConfig[game.launcher] || launcherConfig.steam;
+
+                  return (
                   <div key={game.id} onClick={() => !loading && !isServerFull && handlePlay(game.id)} className="group relative rounded-xl border border-outline-variant bg-surface-container overflow-hidden hover:scale-[1.05] hover:border-primary/50 hover:shadow-[0_4px_20px_rgba(139,92,246,0.2)] transition-all duration-300 cursor-pointer">
                     <div className="aspect-[16/9] overflow-hidden relative">
                       {game.image_url ? (
@@ -1158,6 +1069,11 @@ function App() {
                         <div className="w-full h-full flex items-center justify-center bg-surface-variant text-on-surface-variant font-title-lg">{game.name}</div>
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-surface-container via-transparent to-transparent"></div>
+                      {/* Badge de launcher */}
+                      <div className={`absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest border backdrop-blur-sm bg-gradient-to-r ${launcher.color} ${launcher.border} ${launcher.text}`}>
+                        <span>{launcher.icon}</span>
+                        {launcher.label}
+                      </div>
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-sm">
                         <button disabled={loading || isServerFull} className="bg-primary text-on-primary rounded-full p-4 hover:scale-110 transition-transform bloom-shadow disabled:bg-surface-variant">
                           <span className="material-symbols-outlined text-[32px]" style={{fontVariationSettings: "'FILL' 1"}}>play_arrow</span>
@@ -1173,7 +1089,8 @@ function App() {
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           </>
