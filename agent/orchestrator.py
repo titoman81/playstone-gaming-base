@@ -725,6 +725,8 @@ class PlaystoneOrchestrator:
         if not ip:
             print(f"[!] Timeout esperando IP del pod {pod_id}.")
             await report_status(session_id, "Tiempo de espera agotado (9 min). El servidor no respondió.", "failed")
+            print(f"[*] Terminando el pod {pod_id} debido a timeout...")
+            await self.terminate_pod(pod_id)
             return None
 
         # ── Guardar IP + puertos en Supabase ──────────────────────────────────
