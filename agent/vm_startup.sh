@@ -88,7 +88,7 @@ if [ "$SUNSHINE_READY" -eq 0 ]; then
     
     # Recolectar logs críticos para depuración y guardarlos en status_message
     DEBUG_LOG="Error: Sunshine no pudo iniciarse.\n\n=== XORG CONF ===\n$(cat /etc/X11/xorg.conf 2>/dev/null | head -n 50)\n"
-    DEBUG_LOG="$DEBUG_LOG\n=== XORG ERRORS ===\n$(cat /var/log/Xorg.0.log 2>/dev/null | grep -iE '(ee|ww)' | tail -n 20)\n"
+    DEBUG_LOG="$DEBUG_LOG\n=== XORG ERRORS ===\n$(cat /var/log/Xorg.55.log /var/log/Xorg.0.log 2>/dev/null | grep -iE '(ee|ww)' | tail -n 20)\n"
     DEBUG_LOG="$DEBUG_LOG\n=== SUPERVISOR XORG ===\n$(cat /var/log/supervisor/xorg-*.log /home/default/.cache/log/xorg.log 2>/dev/null | tail -n 20)\n"
     DEBUG_LOG="$DEBUG_LOG\n=== SUPERVISOR SUNSHINE ===\n$(cat /var/log/supervisor/sunshine-*.log /home/default/.cache/log/sunshine.log 2>/dev/null | tail -n 20)\n"
     
