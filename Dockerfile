@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install Tailscale, Python3, and SSH Server
 RUN curl -fsSL https://tailscale.com/install.sh | sh && \
-    apt-get update && apt-get install -y openssh-server && \
+    apt-get update && apt-get install -y openssh-server xserver-xorg-video-dummy && \
     mkdir -p /var/run/sshd && \
     echo 'root:playstone' | chpasswd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
