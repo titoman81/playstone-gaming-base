@@ -11,8 +11,10 @@ RUN apt-get update -y && \
     rm -rf /var/lib/apt/lists/*
 
 # ── Script de arranque de Playstone ─────────────────────────────────────────
-# El script solo configura Tailscale y reporta estado a Supabase.
-# Steam, Sunshine y Xorg arrancan automáticamente mediante el entrypoint
-# de la imagen base josh5/steam-headless.
-COPY agent/vm_startup.sh /playstone_startup.sh
-RUN chmod +x /playstone_startup.sh
+# Steam-Headless ejecuta automáticamente cualquier *.sh dentro de ~/init.d/
+# (/home/default/init.d/) durante el arranque del contenedor, DESPUÉS de que
+# Xorg, Steam y Sunshine ya estén listos. Esto es el mecanismo oficial.
+# Ver: https://github.com/Steam-Headless/docker-steam-headless#additional-software
+RUN mkdir -p /home/default/init.d
+COPY agent/vm_startup.sh /home/default/init.d/playstone_startup.sh
+RUN chmod +x /home/default/init.d/playstone_startup.sh

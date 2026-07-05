@@ -3,8 +3,11 @@
 # ════════════════════════════════════════════════════════════════════════════════
 # Playstone Cloud Gaming - Startup Script v4.0 (Steam-Headless Edition)
 # ════════════════════════════════════════════════════════════════════════════════
-# NOTA: Este script corre DESPUÉS de que josh5/steam-headless ya arrancó
-# Steam, Sunshine y Xorg automáticamente mediante su propio entrypoint.
+# MECANISMO: Este script vive en ~/init.d/ y es ejecutado AUTOMÁTICAMENTE
+# por el entrypoint de josh5/steam-headless, DESPUÉS de que supervisor
+#
+# haya arrancado Steam, Sunshine y Xorg. NO requiere sleep infinity al
+# final: los scripts de ~/init.d/ se ejecutan en background por diseño.
 #
 # Responsabilidades de este script:
 #   1. Conectar Tailscale (si hay authkey)
@@ -12,8 +15,10 @@
 #   3. Reportar estado a Supabase
 # ════════════════════════════════════════════════════════════════════════════════
 
-# ── Idempotency ──────────────────────────────────────────────────────────────
-PIDFILE="/var/run/playstone_startup.pid"
+# ── Idempotency ────────────────────────────────────────────────────────────────────────────
+# Usamos /tmp/ en lugar de /var/run/ porque el usuario 'default' (no root)
+# puede no tener permisos de escritura en /var/run/
+PIDFILE="/tmp/playstone_startup.pid"
 if [ -f "$PIDFILE" ]; then
     OLD_PID=$(cat "$PIDFILE")
     if kill -0 "$OLD_PID" 2>/dev/null; then
@@ -102,9 +107,10 @@ if [ "$SUNSHINE_READY" -eq 0 ]; then
     exit 1
 fi
 
-# ── FASE 3: Reportar listo ───────────────────────────────────────────────────
+# ── FASE 3: Reportar listo ───────────────────────────────────────────────────────────────────────
 echo "[OK] ✓ Servidor Playstone listo. Steam y Sunshine corriendo."
 report_status "Servidor listo. Conecta con Moonlight." "ready"
 
-# Mantener el script vivo (la imagen base ya gestiona los procesos principales)
-sleep infinity
+# NO ponemos sleep infinity aqui.
+# Los scripts de ~/init.d/ son ejecutados en background por steam-headless;
+# el contenedor sigue vivo gracias al proceso supervisor principal de la imagen.
