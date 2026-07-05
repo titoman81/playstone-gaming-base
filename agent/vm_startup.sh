@@ -28,7 +28,7 @@ report_status() {
         if command -v jq &> /dev/null; then
             msg=$(echo "$msg" | jq -Rsa .)
         else
-            msg="\"${msg}\""
+            msg=$(python3 -c "import sys, json; print(json.dumps(sys.stdin.read().strip()))" <<< "$msg")
         fi
         
         curl -s -X PATCH "${SUPABASE_URL}/rest/v1/sessions?id=eq.${SESSION_ID}" \
