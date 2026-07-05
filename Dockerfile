@@ -1,5 +1,6 @@
 FROM josh5/steam-headless:latest
 
+ENV MODE=primary
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install Tailscale and Python3 (python3 is usually installed, but ensure it)
