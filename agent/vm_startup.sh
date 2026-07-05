@@ -31,6 +31,9 @@ echo $$ > "$PIDFILE"
 
 echo "[$(date)] ═══ Playstone Cloud Gaming v4.0 (Steam-Headless) ═══"
 
+# Background wrapper to prevent blocking entrypoint.sh
+(
+
 # ── Helper: Reportar estado a Supabase ──────────────────────────────────────
 report_status() {
     local msg="$1"
@@ -112,6 +115,5 @@ fi
 echo "[OK] ✓ Servidor Playstone listo. Steam y Sunshine corriendo."
 report_status "Servidor listo. Conecta con Moonlight." "ready"
 
-# NO ponemos sleep infinity aqui.
-# Los scripts de ~/init.d/ son ejecutados en background por steam-headless;
-# el contenedor sigue vivo gracias al proceso supervisor principal de la imagen.
+) > /home/default/playstone_background.log 2>&1 &
+
