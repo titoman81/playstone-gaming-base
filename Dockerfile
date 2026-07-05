@@ -18,6 +18,7 @@ RUN echo '#!/bin/bash' > /etc/cont-init.d/99-fix-xorg.sh && \
     echo '        sed -i "/Section \\\"Screen\\\"/a \ \ \ \ SubSection \\\"Display\\\"\\n        Depth 24\\n        Virtual 1920 1080\\n    EndSubSection" /etc/X11/xorg.conf' >> /etc/cont-init.d/99-fix-xorg.sh && \
     echo '    fi' >> /etc/cont-init.d/99-fix-xorg.sh && \
     echo 'fi' >> /etc/cont-init.d/99-fix-xorg.sh && \
+    echo 'echo "capture = x11" >> /templates/sunshine/sunshine.conf' >> /etc/cont-init.d/99-fix-xorg.sh && \
     chmod +x /etc/cont-init.d/99-fix-xorg.sh
 
 # Prevent 80-configure_flatpak.sh from crashing the container when it tries to remount /proc unprivileged
