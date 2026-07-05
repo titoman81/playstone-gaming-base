@@ -2,10 +2,8 @@ FROM josh5/steam-headless:latest
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends curl software-properties-common wget && \
-    curl -fsSL https://tailscale.com/install.sh | sh && \
-    rm -rf /var/lib/apt/lists/*
+# Install Tailscale (curl is already installed in the base image)
+RUN curl -fsSL https://tailscale.com/install.sh | sh
 
 # Prevent 60-configure_gpu_driver.sh from crashing the container if NVIDIA driver download fails
 RUN sed -i 's/return 1/return 0/g' /etc/cont-init.d/60-configure_gpu_driver.sh && \
