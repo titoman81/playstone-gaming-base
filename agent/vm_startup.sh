@@ -67,7 +67,40 @@ if [ -n "$TAILSCALE_AUTHKEY" ]; then
         --hostname="playstone-${SESSION_ID:0:6}" \
         --accept-routes \
         --reset
-    sleep 3
+    # Wait for Sunshine and Moonlight PIN
+    MAX_WAIT=180
+    ELAPSED=0
+    while [ $ELAPSED -lt $MAX_WAIT ]; do
+        if grep -q "PIN =" /var/log/supervisor/sunshine-stdout*.log 2>/dev/null; then
+            MOONLIGHT_PIN=$(grep "PIN =" /var/log/supervisor/sunshine-stdout*.log | tail -n 1 | awk '{print $NF}')
+            if [ -n "$MOONLIGHT_PIN" ]; then
+                echo "[OK] PIN de Moonlight generado: $MOONLIGHT_PIN"
+                
+                curl -s -X PATCH "${SUPABASE_URL}/rest/v1/sessions?id=eq.${SESSION_ID}" \
+                     -H "apikey: ${SUPABASE_KEY}" \
+                     -H "Authorization: Bearer ${SUPABASE_KEY}" \
+                     -H "Content-Type: application/json" \
+                     -d "{\"status\": \"running\", \"moonlight_pin\": \"$MOONLIGHT_PIN\"}" > /dev/null 2>&1 || true
+                
+                break
+            fi
+        fi
+        
+        if supervisorctl status sunshine | grep -q "RUNNING"; then
+            if [ $ELAPSED -ge 15 ]; then
+                echo "[OK] Sunshine en ejecución. PIN manual."
+                curl -s -X PATCH "${SUPABASE_URL}/rest/v1/sessions?id=eq.${SESSION_ID}" \
+                     -H "apikey: ${SUPABASE_KEY}" \
+                     -H "Authorization: Bearer ${SUPABASE_KEY}" \
+                     -H "Content-Type: application/json" \
+                     -d "{\"status\": \"running\", \"moonlight_pin\": \"MANUAL\"}" > /dev/null 2>&1 || true
+                break
+            fi
+        fi
+
+        sleep 5
+        ELAPSED=$((ELAPSED + 5))
+    done
 
     TS_IP=$(tailscale --socket=~/.tailscale/tailscaled.sock ip -4 2>/dev/null || echo "")
     if [ -n "$TS_IP" ]; then
@@ -105,6 +138,6 @@ if [ "$SUNSHINE_READY" -eq 0 ]; then
     exit 1
 fi
 
-report_status "Servidor listo. Conecta con Moonlight." "ready"
+report_status "Servidor listo. Conecta con Moonlight." "running"
 
 ) > /home/default/playstone_background.log 2>&1 &
