@@ -642,7 +642,7 @@ class PlaystoneOrchestrator:
                     "cloudType":         "ALL",
                     "countryCode":       "US",
                     "gpuCount":          1,
-                    "ports":             "30000/tcp,47984/tcp,47989/tcp,47990/tcp,47998/udp,47999/udp,48000/udp",
+                    "ports":             "22/tcp,30000/tcp,47984/tcp,47989/tcp,47990/tcp,47998/udp,47999/udp,48000/udp",
                     "volumeInGb":        10,
                     "volumeMountPath":   "/runpod-volume",
                     "containerDiskInGb": 100,
