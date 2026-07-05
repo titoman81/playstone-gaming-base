@@ -692,7 +692,7 @@ class PlaystoneOrchestrator:
         ip, ssh_port, ml_port, web_port = None, 22, 47989, 30000
 
         start_wait = time.time()
-        timeout = 9 * 60  # 9 minutos
+        timeout = 20 * 60  # 20 minutos (para dar tiempo a descargar la imagen de 8GB)
         while time.time() - start_wait < timeout:
             await asyncio.sleep(5)
             
@@ -724,7 +724,7 @@ class PlaystoneOrchestrator:
 
         if not ip:
             print(f"[!] Timeout esperando IP del pod {pod_id}.")
-            await report_status(session_id, "Tiempo de espera agotado (9 min). El servidor no respondió.", "failed")
+            await report_status(session_id, "Tiempo de espera agotado (20 min). El servidor no respondió.", "failed")
             print(f"[*] Terminando el pod {pod_id} debido a timeout...")
             await self.terminate_pod(pod_id)
             return None
