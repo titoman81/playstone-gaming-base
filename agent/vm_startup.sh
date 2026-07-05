@@ -21,24 +21,21 @@ echo "[$(date)] ═══ Playstone Cloud Gaming v4.0 (Steam-Headless) ═══
 report_status() {
     local msg="$1"
     local status="${2:-provisioning}"
-    local errmsg="$3"
+    
     echo "[STATUS] $msg"
     if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_KEY" ] && [ -n "$SESSION_ID" ]; then
-        if [ -n "$errmsg" ]; then
-            # Escape error message for JSON
-            errmsg=$(echo "$errmsg" | jq -Rsa .)
-            curl -s -X PATCH "${SUPABASE_URL}/rest/v1/sessions?id=eq.${SESSION_ID}" \
-                 -H "apikey: ${SUPABASE_KEY}" \
-                 -H "Authorization: Bearer ${SUPABASE_KEY}" \
-                 -H "Content-Type: application/json" \
-                 -d "{\"status_message\": \"$msg\", \"status\": \"$status\", \"error_message\": $errmsg}" > /dev/null 2>&1 || true
+        # Escape msg for JSON using jq if available, otherwise fallback
+        if command -v jq &> /dev/null; then
+            msg=$(echo "$msg" | jq -Rsa .)
         else
-            curl -s -X PATCH "${SUPABASE_URL}/rest/v1/sessions?id=eq.${SESSION_ID}" \
-                 -H "apikey: ${SUPABASE_KEY}" \
-                 -H "Authorization: Bearer ${SUPABASE_KEY}" \
-                 -H "Content-Type: application/json" \
-                 -d "{\"status_message\": \"$msg\", \"status\": \"$status\"}" > /dev/null 2>&1 || true
+            msg="\"${msg}\""
         fi
+        
+        curl -s -X PATCH "${SUPABASE_URL}/rest/v1/sessions?id=eq.${SESSION_ID}" \
+             -H "apikey: ${SUPABASE_KEY}" \
+             -H "Authorization: Bearer ${SUPABASE_KEY}" \
+             -H "Content-Type: application/json" \
+             -d "{\"status_message\": $msg, \"status\": \"$status\"}" > /dev/null 2>&1 || true
     fi
 }
 
@@ -89,13 +86,13 @@ done
 if [ "$SUNSHINE_READY" -eq 0 ]; then
     echo "[ERROR] Sunshine no respondió tras 3 minutos."
     
-    # Recolectar logs críticos para depuración
-    DEBUG_LOG="=== XORG CONF ===\n$(cat /etc/X11/xorg.conf 2>/dev/null | head -n 50)\n"
+    # Recolectar logs críticos para depuración y guardarlos en status_message
+    DEBUG_LOG="Error: Sunshine no pudo iniciarse.\n\n=== XORG CONF ===\n$(cat /etc/X11/xorg.conf 2>/dev/null | head -n 50)\n"
     DEBUG_LOG="$DEBUG_LOG\n=== XORG ERRORS ===\n$(cat /var/log/Xorg.0.log 2>/dev/null | grep -iE '(ee|ww)' | tail -n 20)\n"
     DEBUG_LOG="$DEBUG_LOG\n=== SUPERVISOR XORG ===\n$(cat /var/log/supervisor/xorg-*.log /home/default/.cache/log/xorg.log 2>/dev/null | tail -n 20)\n"
     DEBUG_LOG="$DEBUG_LOG\n=== SUPERVISOR SUNSHINE ===\n$(cat /var/log/supervisor/sunshine-*.log /home/default/.cache/log/sunshine.log 2>/dev/null | tail -n 20)\n"
     
-    report_status "Error: Sunshine no pudo iniciarse." "failed" "$DEBUG_LOG"
+    report_status "$DEBUG_LOG" "failed"
     exit 1
 fi
 
