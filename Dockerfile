@@ -25,6 +25,9 @@ RUN echo '#!/bin/bash' > /usr/bin/nvidia-xconfig && \
     echo 'EOF' >> /usr/bin/nvidia-xconfig && \
     chmod +x /usr/bin/nvidia-xconfig
 
+# Prevent 80-configure_flatpak.sh from crashing the container when it tries to remount /proc unprivileged
+RUN sed -i 's|mount -t proc none /proc|echo "Ignored unprivileged mount /proc"|g' /etc/cont-init.d/80-configure_flatpak.sh
+
 RUN mkdir -p /home/default/init.d
 COPY agent/vm_startup.sh /home/default/init.d/playstone_startup.sh
 RUN chmod +x /home/default/init.d/playstone_startup.sh
