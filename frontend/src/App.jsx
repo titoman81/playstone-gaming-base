@@ -647,7 +647,7 @@ function App() {
                   <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
                   <span className="material-symbols-outlined text-[24px] text-primary animate-spin" style={{fontVariationSettings: "'FILL' 1"}}>sync</span>
                   <div className="flex flex-col">
-                    <span className="font-title-lg text-primary">{session.status_message || 'Iniciando Windows y ejecutando script...'}</span>
+                    <div className="font-title-lg text-primary max-h-48 overflow-y-auto whitespace-pre-wrap w-full">{session.status_message || 'Iniciando Windows y ejecutando script...'}</div>
                     <span className="text-secondary text-xs">Tiempo de espera: {elapsedSeconds}s (Estimado: ~60s)</span>
                   </div>
                 </div>
@@ -691,7 +691,7 @@ function App() {
                 <span className="material-symbols-outlined text-[64px] text-red-500 animate-pulse" style={{fontVariationSettings: "'FILL' 1"}}>error</span>
                 <div className="text-center">
                   <h2 className="font-display-md text-white text-xl font-bold">Algo salió mal en el servidor</h2>
-                  <p className="text-gray-400 text-sm mt-2 leading-relaxed">{session.status_message || 'Hubo un error al preparar tu sesión.'}</p>
+                  <div className="text-gray-400 text-sm mt-2 leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap text-left p-3 bg-black/20 rounded-lg border border-white/5 w-full">{session.status_message || 'Hubo un error al preparar tu sesión.'}</div>
                 </div>
                 
                 <div className="flex flex-col gap-3 w-full">
@@ -772,9 +772,9 @@ function App() {
                       <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
                       <span className="material-symbols-outlined text-[24px] text-primary animate-spin" style={{fontVariationSettings: "'FILL' 1"}}>dns</span>
                       <div className="flex flex-col">
-                        <span className="font-title-lg text-primary">
+                        <div className="font-title-lg text-primary max-h-48 overflow-y-auto whitespace-pre-wrap w-full">
                           {session.status_message || 'Allocating dedicated server...'}
-                        </span>
+                        </div>
                         <span className="text-secondary text-xs">Tiempo de espera: {elapsedSeconds}s</span>
                       </div>
                     </div>
