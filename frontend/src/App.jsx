@@ -158,7 +158,7 @@ function App() {
       .from('sessions')
       .select('*')
       .eq('user_id', authSession.user.id)
-      .in('status', ['pending', 'provisioning', 'loading_save', 'playing', 'waiting_steam_auth', 'failed'])
+      .in('status', ['pending', 'provisioning', 'loading_save', 'playing', 'running', 'waiting_steam_auth', 'failed'])
       .limit(1)
       
     if (data && data.length > 0) {
@@ -170,7 +170,7 @@ function App() {
     const { count, error } = await supabase
       .from('sessions')
       .select('*', { count: 'exact', head: true })
-      .in('status', ['pending', 'provisioning', 'loading_save', 'playing'])
+      .in('status', ['pending', 'provisioning', 'loading_save', 'playing', 'running'])
     
     if (!error && count !== null) {
       setActiveServers(count)
@@ -199,7 +199,7 @@ function App() {
         .from('sessions')
         .update({ status: 'completed' })
         .eq('user_id', authSession.user.id)
-        .in('status', ['pending', 'provisioning', 'loading_save', 'playing', 'waiting_steam_auth', 'failed'])
+        .in('status', ['pending', 'provisioning', 'loading_save', 'playing', 'running', 'waiting_steam_auth', 'failed'])
 
       const { data, error: rpcErr } = await supabase.rpc('allocate_game_session', {
         p_game_id: gameId,
@@ -476,7 +476,7 @@ function App() {
       || (session.status_message && session.status_message.match(/[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}/)?.[0]);
     const extractedIp = connectIp;
     
-    if (session.status === 'playing') {
+    if (session.status === 'playing' || session.status === 'running') {
       return (
         <div className="relative z-20 h-[calc(100vh-64px)] w-full flex items-center justify-center pointer-events-auto">
           {/* Active Session TopAppBar overlay */}

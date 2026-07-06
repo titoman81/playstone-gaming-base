@@ -40,6 +40,8 @@ GAMING_IMAGE_ID = os.getenv(
 SUPABASE_URL     = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY     = os.getenv("SUPABASE_KEY", "")
 SSH_KEY_PUB      = os.getenv("SSH_KEY", "").strip('"').strip("'").strip()
+# Ruta a la clave privada SSH — primero buscamos la variable de entorno, luego las rutas por defecto
+SSH_KEY_PATH     = os.getenv("SSH_KEY_PATH", "").strip('"').strip("'")
 
 # Ruta al script de arranque (relativo a este archivo)
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -208,16 +210,20 @@ def _ssh_bootstrap(session_id: str, ip: str, ssh_port: int, env_vars: dict,
         full_script = env_header + startup_content
 
     pkey = None
-    # Intentar cargar la clave privada SSH (id_rsa) del sistema
-    for key_path in [
+    # Buscar clave privada SSH: 1) variable de entorno SSH_KEY_PATH, 2) rutas por defecto
+    key_candidates = []
+    if SSH_KEY_PATH and os.path.exists(SSH_KEY_PATH):
+        key_candidates.insert(0, SSH_KEY_PATH)
+    key_candidates += [
         os.path.expanduser("~/.ssh/id_rsa_playstone"),
         os.path.expanduser("~/.ssh/id_rsa"),
         os.path.expanduser("~/.ssh/id_ed25519"),
-    ]:
+    ]
+    for key_path in key_candidates:
         if os.path.exists(key_path):
             try:
                 pkey = paramiko.RSAKey.from_private_key_file(key_path)
-                print(f"[SSH] Usando clave privada: {key_path}")
+                print(f"[SSH] Usando clave privada RSA: {key_path}")
                 break
             except Exception:
                 try:
@@ -270,8 +276,51 @@ def _ssh_bootstrap(session_id: str, ip: str, ssh_port: int, env_vars: dict,
 
     print(f"[!] [SSH] No se pudo conectar a {ip}:{ssh_port} tras {max_attempts} intentos.")
 
-def _pair_moonlight_pin(ip: str, ssh_port: int, pin: str) -> bool:
-    """Ejecuta el emparejamiento del PIN a través de SSH en la VM de destino llamando a la API local de Sunshine."""
+def _pair_moonlight_pin(ip: str, public_sunshine_port: int, pin: str) -> bool:
+    """
+    Envía el PIN de emparejamiento directamente a la API REST de Sunshine
+    usando el puerto público mapeado por RunPod (no requiere SSH).
+    """
+    import ssl
+    # Construir URL con el puerto público de Sunshine (47990 interno → publicPort en RunPod)
+    url = f"https://{ip}:{public_sunshine_port}/api/pin"
+    payload = json.dumps({"pin": pin, "salt": ""})
+    headers_req = {
+        "Content-Type": "application/json",
+    }
+    try:
+        # Sunshine usa certificado autofirmado — desactivamos verificación SSL
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        import urllib.request
+        import urllib.error
+        import base64
+        
+        # Basic auth: SUNSHINE_USER:SUNSHINE_PASS (playstone:playstone123)
+        credentials = base64.b64encode(b"playstone:playstone123").decode("ascii")
+        req = urllib.request.Request(
+            url,
+            data=payload.encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Basic {credentials}",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as resp:
+            code = resp.getcode()
+            print(f"[+] PIN de Moonlight ({pin}) enviado a Sunshine. HTTP {code}")
+            return True
+    except Exception as e:
+        print(f"[!] Error enviando PIN a Sunshine en {url}: {e}")
+        # Fallback: intentar via SSH si el acceso directo falla
+        return _pair_moonlight_pin_ssh(ip, 22, pin)
+
+
+def _pair_moonlight_pin_ssh(ip: str, ssh_port: int, pin: str) -> bool:
+    """Fallback: envía el PIN via SSH ejecutando curl localmente en el pod."""
     try:
         import paramiko
     except ImportError:
@@ -279,11 +328,15 @@ def _pair_moonlight_pin(ip: str, ssh_port: int, pin: str) -> bool:
         return False
         
     pkey = None
-    for key_path in [
+    key_candidates = []
+    if SSH_KEY_PATH and os.path.exists(SSH_KEY_PATH):
+        key_candidates.insert(0, SSH_KEY_PATH)
+    key_candidates += [
         os.path.expanduser("~/.ssh/id_rsa_playstone"),
         os.path.expanduser("~/.ssh/id_rsa"),
         os.path.expanduser("~/.ssh/id_ed25519"),
-    ]:
+    ]
+    for key_path in key_candidates:
         if os.path.exists(key_path):
             try:
                 pkey = paramiko.RSAKey.from_private_key_file(key_path)
@@ -302,23 +355,15 @@ def _pair_moonlight_pin(ip: str, ssh_port: int, pin: str) -> bool:
         if pkey: connect_kwargs["pkey"] = pkey
         client.connect(**connect_kwargs)
         
-        # Enviar PIN a la API de Sunshine localmente
-        # NOTA: En Sunshine v0.22+, a veces la API devuelve un status que podemos chequear, pero para emparejamiento 
-        # asincrono basta con enviar la request.
         cmd = f"curl -k -s -o /dev/null -w '%{{http_code}}' -X POST -u playstone:playstone123 -H 'Content-Type: application/json' -d '{{\"pin\":\"{pin}\", \"salt\":\"\"}}' https://127.0.0.1:47990/api/pin"
         _, stdout, _ = client.exec_command(cmd, timeout=10)
         code = stdout.read().decode().strip()
         client.close()
         
-        if code in ["200", "202"]:
-            print(f"[+] [SSH] PIN de Moonlight ({pin}) enviado exitosamente a {ip}.")
-            return True
-        else:
-            print(f"[!] [SSH] Error al enviar PIN. Código HTTP devuelto por Sunshine: {code}")
-            # Consideramos exito de todos modos para que se limpie y no bloquee
-            return True
+        print(f"[+] [SSH-fallback] PIN enviado. HTTP {code}")
+        return True
     except Exception as e:
-        print(f"[!] [SSH] Error conectando para PIN: {e}")
+        print(f"[!] [SSH-fallback] Error: {e}")
         return False
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -934,14 +979,16 @@ async def orchestrator_daemon():
                     
                     if pin and ip:
                         print(f"[*] Detectado PIN de Moonlight para sesión {session_id[:8]}...")
-                        # Obtener puerto SSH (default 22 o el puerto guardado en metadata, 
-                        # pero por simplicidad el orquestador lo buscaría de pod_ip)
-                        # Nota: En RunPod el puerto SSH expuesto cambia. Buscamos el pod real para obtenerlo.
+                        # Obtener puerto público de Sunshine 47990 del pod real
                         active_pods = await orch.get_active_pods()
-                        ssh_port = 22
+                        sunshine_public_port = 47990  # fallback
                         for p in active_pods:
                             if p.get("id") == sess.get("instance_id"):
-                                _, ssh_port, _, _ = orch._extract_ip_and_ports(p)
+                                runtime = p.get("runtime") or {}
+                                for port_obj in (runtime.get("ports") or []):
+                                    if port_obj.get("privatePort") == 47990:
+                                        sunshine_public_port = port_obj.get("publicPort", 47990)
+                                        break
                                 break
                                 
                         def _pair_and_clear(sid, target_ip, target_port, target_pin):
@@ -960,7 +1007,7 @@ async def orchestrator_daemon():
                                 if response.status_code == 204:
                                     print(f"[*] PIN limpiado de la sesión {sid[:8]}.")
                         
-                        threading.Thread(target=_pair_and_clear, args=(session_id, ip, ssh_port, pin), daemon=True).start()
+                        threading.Thread(target=_pair_and_clear, args=(session_id, ip, sunshine_public_port, pin), daemon=True).start()
 
         except Exception as e:
             print(f"[!] Error en el ciclo del daemon: {e}")
