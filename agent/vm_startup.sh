@@ -113,12 +113,20 @@ if [ -n "$TAILSCALE_AUTHKEY" ]; then
     fi
 fi
 
-echo "[INIT] Esperando a que Sunshine esté disponible (puerto 47990)..."
+echo "[INIT] Esperando a que Sunshine esté disponible (puerto 47990 o proceso activo)..."
 report_status "Iniciando servicios de streaming..." "provisioning"
 
 SUNSHINE_READY=0
 for i in $(seq 1 36); do
+    # Check 1: HTTPS port responds
     if curl -sk --max-time 3 "https://localhost:47990" > /dev/null 2>&1; then
+        echo "[OK] Sunshine responde en HTTPS puerto 47990."
+        SUNSHINE_READY=1
+        break
+    fi
+    # Check 2: supervisorctl says RUNNING (process is up but HTTPS not yet ready)
+    if supervisorctl status sunshine 2>/dev/null | grep -q "RUNNING"; then
+        echo "[OK] Sunshine proceso RUNNING (HTTPS puede tardar un poco más)."
         SUNSHINE_READY=1
         break
     fi
@@ -138,6 +146,6 @@ if [ "$SUNSHINE_READY" -eq 0 ]; then
     exit 1
 fi
 
-report_status "Servidor listo. Conecta con Moonlight." "running"
+report_status "Servidor listo. Conecta con Moonlight." "playing"
 
 ) > /home/default/playstone_background.log 2>&1 &
