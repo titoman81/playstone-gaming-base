@@ -16,9 +16,9 @@ RUN echo '#!/bin/bash' > /etc/cont-init.d/01-sshd.sh && \
     echo '/usr/sbin/sshd -D &' >> /etc/cont-init.d/01-sshd.sh && \
     chmod +x /etc/cont-init.d/01-sshd.sh
 
-# Prevent 60-configure_gpu_driver.sh from crashing the container if NVIDIA driver download fails
-RUN sed -i 's/return 1/return 0/g' /etc/cont-init.d/60-configure_gpu_driver.sh && \
-    sed -i 's/exit 1/exit 0/g' /etc/cont-init.d/60-configure_gpu_driver.sh
+# Prevent 60-configure_gpu_driver.sh from crashing the container by completely removing it.
+# RunPod already provides the NVIDIA drivers via the host, so we don't need this script to run the .run installer.
+RUN rm -f /etc/cont-init.d/60-configure_gpu_driver.sh
 
 # After 60-configure_gpu_driver.sh runs (which generates xorg.conf using the real nvidia-xconfig),
 # this script ensures the Virtual resolution is injected into Section "Screen".

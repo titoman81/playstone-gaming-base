@@ -1,12 +1,31 @@
 #!/bin/bash
-if [ -f /etc/X11/xorg.conf ]; then
-    echo "Configurando xorg.conf para modo headless con driver dummy..."
+if [ ! -f /etc/X11/xorg.conf ]; then
+    echo "xorg.conf no existe. Creando uno basico con driver dummy..."
+    cat << 'EOF' > /etc/X11/xorg.conf
+Section "Device"
+    Identifier     "Device0"
+    Driver         "dummy"
+    VideoRam       262144
+EndSection
+
+Section "Screen"
+    Identifier     "Screen0"
+    Device         "Device0"
+    Monitor        "Monitor0"
+    DefaultDepth    24
+    SubSection "Display"
+        Depth 24
+        Virtual 1920 1080
+    EndSubSection
+EndSection
+EOF
+else
+    echo "Configurando xorg.conf existente para modo headless con driver dummy..."
 
     # 1. Cambiar driver de nvidia a dummy
     sed -i 's/Driver         "nvidia"/Driver         "dummy"/g' /etc/X11/xorg.conf
 
     # 2. Agregar VideoRam al bloque Device (el dummy necesita al menos 256MB declarados)
-    #    Insertamos la línea justo antes del cierre del bloque Device
     sed -i '/Driver         "dummy"/a\    VideoRam       262144' /etc/X11/xorg.conf
 
     # 3. Quitar opciones incompatibles con el driver dummy
@@ -16,14 +35,14 @@ if [ -f /etc/X11/xorg.conf ]; then
     sed -i '/Option.*AllowExternalGpus/d' /etc/X11/xorg.conf
     sed -i '/BusID/d' /etc/X11/xorg.conf
 
-    # 4. Inyectar SubSection Display con resolución virtual si no existe
+    # 4. Inyectar SubSection Display con resolucion virtual si no existe
     if ! grep -q "Virtual 1920 1080" /etc/X11/xorg.conf; then
         awk '/Section "Screen"/{print;print "    SubSection \"Display\"\n        Depth 24\n        Virtual 1920 1080\n    EndSubSection";next}1' /etc/X11/xorg.conf > /tmp/xorg.conf && mv /tmp/xorg.conf /etc/X11/xorg.conf
     fi
-
-    echo "xorg.conf actualizado:"
-    cat /etc/X11/xorg.conf
 fi
+
+echo "xorg.conf actualizado:"
+cat /etc/X11/xorg.conf
 
 # Asegurar capture x11 en Sunshine
 mkdir -p /templates/sunshine
