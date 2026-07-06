@@ -38,8 +38,20 @@ report_status() {
              -d "{\"status_message\": $msg, \"status\": \"$status\"}" > /dev/null 2>&1 || true
     fi
 }
-
 report_status "Servidor arrancando (Steam-Headless)..." "provisioning"
+
+# Configurar credenciales de Sunshine para que funcione el REST API o SSH
+echo "[INIT] Configurando credenciales de Sunshine..."
+sunshine --creds admin admin > /dev/null 2>&1 &
+sleep 2
+killall sunshine || true
+# Inyectar clave SSH si fue provista por el orquestador
+if [ -n "$SSH_KEY_PUB" ]; then
+    echo "[INIT] Inyectando clave SSH del orquestador..."
+    mkdir -p ~/.ssh
+    echo "$SSH_KEY_PUB" >> ~/.ssh/authorized_keys
+    chmod 600 ~/.ssh/authorized_keys
+fi
 
 # Force sunshine to use X11 capture to avoid KMS segfaults on virtual displays
 echo "[INIT] Aplicando fix de captura X11 para Sunshine..."
