@@ -545,82 +545,57 @@ function App() {
                 <code className="text-[#FF4500] font-mono text-xl block mt-2">{extractedIp}</code>
               </div>
 
-              {session.web_url && (
-                <a 
-                  href={session.web_url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="w-full mt-2 py-4 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl font-bold uppercase tracking-widest text-sm transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2"
-                >
-                  <span className="material-symbols-outlined">sports_esports</span>
-                  Jugar en el Navegador
-                </a>
-              )}
+              {/* PIN Input (Always visible) */}
+              <div className="w-full mt-2 bg-white/5 p-4 rounded-xl border border-white/10">
+                <p className="text-gray-300 text-sm leading-relaxed mb-3">
+                  Introduce el <strong>PIN de 4 dígitos</strong> de Moonlight para autorizar la conexión:
+                </p>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="text" 
+                    maxLength="4"
+                    value={moonlightPin}
+                    onChange={(e) => setMoonlightPin(e.target.value.replace(/[^0-9]/g, ''))}
+                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-xl font-mono tracking-[0.5em] outline-none focus:border-[#FF4500]/50 focus:shadow-[0_0_15px_rgba(255,69,0,0.15)] transition-all"
+                    placeholder="XXXX"
+                  />
+                  <button 
+                    onClick={handlePairMoonlight}
+                    disabled={pairingLoading || moonlightPin.length !== 4}
+                    className="px-6 py-3 bg-[#FF4500] hover:bg-[#FF6347] disabled:bg-gray-700 disabled:text-gray-400 text-white rounded-xl font-bold uppercase tracking-widest text-sm transition-all shadow-[0_0_15px_rgba(255,69,0,0.3)] disabled:shadow-none"
+                  >
+                    {pairingLoading ? 'Enviando...' : 'Vincular'}
+                  </button>
+                </div>
 
-              {pinPaired ? (
-                <div className="w-full bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 mt-4 flex flex-col items-center gap-3">
-                  <p className="text-emerald-400 font-bold text-sm flex items-center gap-2">
+                {/* Status Banners */}
+                {pinPaired && (
+                  <p className="text-emerald-400 font-bold text-sm mt-4 flex items-center gap-2 justify-center bg-emerald-500/10 py-2 rounded-lg border border-emerald-500/20">
                     <span className="material-symbols-outlined text-[18px]" style={{fontVariationSettings: "'FILL' 1"}}>verified</span>
                     ¡Dispositivo emparejado con éxito!
                   </p>
-                  {session.web_url && (
-                    <a
-                      href={session.web_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl font-bold uppercase tracking-widest text-xs transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">sports_esports</span>
-                      Abrir Moonlight Web
-                    </a>
-                  )}
-                </div>
-              ) : pinSent ? (
-                <div className="w-full bg-green-500/10 border border-green-500/30 rounded-xl p-4 mt-4 flex flex-col items-center gap-3">
-                  <p className="text-green-400 font-bold text-sm flex items-center gap-2">
+                )}
+                {pinSent && !pinPaired && (
+                  <p className="text-green-400 font-bold text-sm mt-4 flex items-center gap-2 justify-center bg-green-500/10 py-2 rounded-lg border border-green-500/20">
                     <span className="material-symbols-outlined text-[18px]" style={{fontVariationSettings: "'FILL' 1"}}>check_circle</span>
-                    PIN Enviado — Autorizando dispositivo...
+                    {pinCountdown > 0 ? `Verificando en ${pinCountdown}s...` : 'Autorizando dispositivo...'}
                   </p>
-                  {pinCountdown > 0 ? (
-                    <p className="text-gray-400 text-xs">
-                      Verificando emparejamiento en <strong className="text-white">{pinCountdown}s</strong>...
-                    </p>
-                  ) : (
-                    session.web_url && (
-                      <a
-                        href={session.web_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl font-bold uppercase tracking-widest text-xs transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">open_in_new</span>
-                        Abrir Moonlight Web
-                      </a>
-                    )
-                  )}
-                </div>
-              ) : (
+                )}
+              </div>
+
+              {/* Moonlight Web Button */}
+              {session.web_url && (
                 <div className="w-full mt-4">
-                  <p className="text-gray-400 text-sm leading-relaxed mb-3">
-                    Introduce el <strong>PIN de 4 dígitos</strong> que te da Moonlight para autorizar la conexión:
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="text" 
-                      maxLength="4"
-                      value={moonlightPin}
-                      onChange={(e) => setMoonlightPin(e.target.value.replace(/[^0-9]/g, ''))}
-                      className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-xl font-mono tracking-[0.5em] outline-none focus:border-[#FF4500]/50 focus:shadow-[0_0_15px_rgba(255,69,0,0.15)] transition-all"
-                      placeholder="XXXX"
-                    />
-                    <button 
-                      onClick={handlePairMoonlight}
-                      disabled={pairingLoading || moonlightPin.length !== 4}
-                      className="px-6 py-3 bg-[#FF4500] hover:bg-[#FF6347] disabled:bg-gray-700 disabled:text-gray-400 text-white rounded-xl font-bold uppercase tracking-widest text-xs transition-all shadow-[0_0_15px_rgba(255,69,0,0.3)] disabled:shadow-none"
-                    >
-                      {pairingLoading ? 'Enviando...' : 'Vincular'}
-                    </button>
-                  </div>
+                  <p className="text-gray-400 text-xs text-center mb-2">¿Prefieres jugar desde el navegador sin instalar nada?</p>
+                  <a 
+                    href={session.web_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl font-bold uppercase tracking-widest text-sm transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined">sports_esports</span>
+                    Abrir Moonlight Web
+                  </a>
                 </div>
               )}
             </div>
