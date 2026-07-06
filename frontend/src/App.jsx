@@ -208,6 +208,11 @@ function App() {
       if (rpcErr) throw rpcErr
       const sessionId = data[0].session_id
 
+      // Clear any stale pin state for the new session
+      setPinSent(false)
+      setPinPaired(false)
+      try { sessionStorage.removeItem('pinSent') } catch {}
+
       // Update session with credentials immediately
       await supabase.from('sessions').update({
         tailscale_authkey: tailscaleAuthKey
@@ -245,12 +250,23 @@ function App() {
 
   const [moonlightPin, setMoonlightPin] = useState('')
   const [pairingLoading, setPairingLoading] = useState(false)
-  // pinSent persiste en sessionStorage para sobrevivir recargas dentro de la misma sesión
   const [pinSent, setPinSent] = useState(() => {
     try { return sessionStorage.getItem('pinSent') === 'true' } catch { return false }
   })
   const [pinCountdown, setPinCountdown] = useState(0)
   const [pinPaired, setPinPaired] = useState(false)
+
+  // Resincronizar estado del PIN con la DB cuando se carga la sesión
+  useEffect(() => {
+    if (session && session.status === 'playing' || session?.status === 'running') {
+      // Si la base de datos dice que no hay PIN pendiente, y el usuario dice que sí, resetear
+      // a menos que estemos en medio de la cuenta regresiva (para no parpadear)
+      if (!session.moonlight_pin && pinCountdown === 0 && pinSent && !pinPaired) {
+        setPinSent(false)
+        try { sessionStorage.removeItem('pinSent') } catch {}
+      }
+    }
+  }, [session, pinCountdown, pinSent, pinPaired])
 
   const handlePairMoonlight = async () => {
     if (!moonlightPin.trim() || moonlightPin.length < 4) {
