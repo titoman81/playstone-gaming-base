@@ -775,9 +775,22 @@ class PlaystoneOrchestrator:
 
         # ── Guardar IP + puertos en Supabase ──────────────────────────────────
         await save_vm_info(session_id, pod_id, ip, ssh_port, ml_port, web_port)
-        await report_status(session_id, f"Servidor arrancando en {ip}. Esperando inicialización interna...", "provisioning")
+        await report_status(session_id, f"Servidor arrancando en {ip}. Ejecutando script de inicio...", "provisioning")
 
-        # No SSH bootstrap needed. The dockerArgs injection handles it!
+        # Inyectar el script vm_startup.sh actualizado vía SSH
+        t = threading.Thread(target=_ssh_bootstrap, args=(session_id, ip, ssh_port, {
+            "SESSION_ID": session_id or "",
+            "SUPABASE_URL": SUPABASE_URL,
+            "SUPABASE_KEY": SUPABASE_KEY,
+            "STEAM_APP_ID": steam_app_id or "",
+            "GAME_NAME": game_name,
+            "RUNPOD_PUBLIC_IP": ip,
+            "STEAM_USERNAME": steam_username or "",
+            "STEAM_PASSWORD": steam_password or "",
+            "TAILSCALE_AUTHKEY": tailscale_authkey or ""
+        }), daemon=True)
+        t.start()
+
         return pod_id
 
 

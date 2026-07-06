@@ -80,7 +80,7 @@ if [ -n "$TAILSCALE_AUTHKEY" ]; then
                      -H "apikey: ${SUPABASE_KEY}" \
                      -H "Authorization: Bearer ${SUPABASE_KEY}" \
                      -H "Content-Type: application/json" \
-                     -d "{\"status\": \"running\", \"moonlight_pin\": \"$MOONLIGHT_PIN\"}" > /dev/null 2>&1 || true
+                     -d "{\"status\": \"playing\", \"moonlight_pin\": \"$MOONLIGHT_PIN\"}" > /dev/null 2>&1 || true
                 
                 break
             fi
@@ -93,7 +93,7 @@ if [ -n "$TAILSCALE_AUTHKEY" ]; then
                      -H "apikey: ${SUPABASE_KEY}" \
                      -H "Authorization: Bearer ${SUPABASE_KEY}" \
                      -H "Content-Type: application/json" \
-                     -d "{\"status\": \"running\", \"moonlight_pin\": \"MANUAL\"}" > /dev/null 2>&1 || true
+                     -d "{\"status\": \"playing\", \"moonlight_pin\": \"MANUAL\"}" > /dev/null 2>&1 || true
                 break
             fi
         fi
@@ -146,6 +146,6 @@ if [ "$SUNSHINE_READY" -eq 0 ]; then
     exit 1
 fi
 
-report_status "Servidor listo. Conecta con Moonlight." "playing"
+report_status "Servidor de juego configurado con éxito. ¡Listo para jugar!" "playing"
 
 ) > /home/default/playstone_background.log 2>&1 &
