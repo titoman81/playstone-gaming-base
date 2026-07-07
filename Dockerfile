@@ -8,12 +8,15 @@ RUN curl -fsSL https://tailscale.com/install.sh | sh && \
     apt-get update && apt-get install -y openssh-server xserver-xorg-video-dummy && \
     mkdir -p /var/run/sshd && \
     echo 'root:playstone' | chpasswd && \
-    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+    sed -i 's/#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    echo 'StrictModes no' >> /etc/ssh/sshd_config
 
-# Start SSHD during init
+# Start SSHD during init - use fork mode (no -D) so it daemonizes properly
 RUN echo '#!/bin/bash' > /etc/cont-init.d/01-sshd.sh && \
-    echo '/usr/sbin/sshd -D &' >> /etc/cont-init.d/01-sshd.sh && \
+    echo 'mkdir -p /var/run/sshd' >> /etc/cont-init.d/01-sshd.sh && \
+    echo '/usr/sbin/sshd' >> /etc/cont-init.d/01-sshd.sh && \
+    echo 'echo "[SSHD] Started on port 22"' >> /etc/cont-init.d/01-sshd.sh && \
     chmod +x /etc/cont-init.d/01-sshd.sh
 
 # Prevent 60-configure_gpu_driver.sh from crashing the container by completely removing it.

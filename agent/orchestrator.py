@@ -34,7 +34,7 @@ runpod.api_key   = RUNPOD_API_KEY
 #   4. Actualizar GAMING_IMAGE_ID en .env con tu imagen (ahora usamos la oficial por defecto).
 GAMING_IMAGE_ID = os.getenv(
     "GAMING_IMAGE_ID",
-    "ghcr.io/titoman81/playstone-gaming-base:v7"
+    "ghcr.io/titoman81/playstone-gaming-base:v8"
 )
 
 SUPABASE_URL     = os.getenv("SUPABASE_URL", "")
@@ -176,7 +176,7 @@ async def save_vm_info(session_id: str, pod_id: str, ip: str, ssh_port: int, moo
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _ssh_bootstrap(session_id: str, ip: str, ssh_port: int, env_vars: dict,
-                   max_attempts: int = 30, wait_between: int = 10):
+                   max_attempts: int = 60, wait_between: int = 10):
     """
     Intenta conectarse por SSH al pod (hasta max_attempts × wait_between segundos)
     y sube + ejecuta vm_startup.sh con las variables de entorno necesarias.
@@ -635,6 +635,11 @@ class PlaystoneOrchestrator:
                         {"key": "SUNSHINE_PASS",          "value": "playstone123"},
                         {"key": "USER_LOCALES",           "value": "en_US.UTF-8 UTF-8"},
                         {"key": "TZ",                     "value": "UTC"},
+            
+                        # SSH: password para que SSHD acepte conexiones desde el inicio
+                        # USER_PASSWORD es leida por 10-setup_user.sh de steam-headless
+                        # y hace: echo "root:${USER_PASSWORD}" | chpasswd
+                        {"key": "USER_PASSWORD",          "value": "playstone"},
             ]
             if steam_username: env_vars.append({"key": "STEAM_USERNAME", "value": steam_username})
             if steam_password: env_vars.append({"key": "STEAM_PASSWORD", "value": steam_password})
