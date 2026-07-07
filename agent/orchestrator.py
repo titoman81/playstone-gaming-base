@@ -34,11 +34,12 @@ runpod.api_key   = RUNPOD_API_KEY
 #   4. Actualizar GAMING_IMAGE_ID en .env con tu imagen (ahora usamos la oficial por defecto).
 GAMING_IMAGE_ID = os.getenv(
     "GAMING_IMAGE_ID",
-    "ghcr.io/titoman81/playstone-gaming-base:main"
+    "ghcr.io/titoman81/playstone-gaming-base:v6"
 )
 
 SUPABASE_URL     = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY     = os.getenv("SUPABASE_KEY", "")
+TAILSCALE_AUTHKEY = os.getenv("TAILSCALE_AUTHKEY")
 SSH_KEY_PUB      = os.getenv("SSH_KEY", "").strip('"').strip("'").strip()
 # Ruta a la clave privada SSH — primero buscamos la variable de entorno, luego las rutas por defecto
 SSH_KEY_PATH     = os.getenv("SSH_KEY_PATH", "").strip('"').strip("'")
@@ -84,7 +85,7 @@ async def report_status(session_id: str, message: str, status: str = "provisioni
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{session_id}",
+                f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{session_id}&status=neq.completed&status=neq.terminated",
                 headers={
                     "apikey": SUPABASE_KEY,
                     "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -238,7 +239,7 @@ def _ssh_bootstrap(session_id: str, ip: str, ssh_port: int, env_vars: dict,
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            connect_kwargs = {"hostname": ip, "port": ssh_port, "username": "root", "timeout": 15}
+            connect_kwargs = {"hostname": ip, "port": ssh_port, "username": "root", "password": "playstone", "timeout": 15}
             if pkey:
                 connect_kwargs["pkey"] = pkey
             else:
@@ -615,6 +616,7 @@ class PlaystoneOrchestrator:
                         {"key": "SUPABASE_URL",  "value": SUPABASE_URL},
                         {"key": "SUPABASE_KEY",  "value": SUPABASE_KEY},
                         {"key": "SSH_KEY_PUB",   "value": SSH_KEY_PUB},
+                        {"key": "PUBLIC_KEY",    "value": SSH_KEY_PUB},
                         {"key": "STEAM_APP_ID",  "value": steam_app_id},
                         {"key": "GAME_ID",       "value": steam_app_id},  # alias para launch_game.sh
                         {"key": "GAME_NAME",     "value": game_name},
@@ -631,7 +633,6 @@ class PlaystoneOrchestrator:
                         {"key": "ENABLE_SUNSHINE",        "value": "true"},
                         {"key": "SUNSHINE_USER",          "value": "playstone"},
                         {"key": "SUNSHINE_PASS",          "value": "playstone123"},
-                        {"key": "FORCE_X11_DUMMY_CONFIG", "value": "true"},
                         {"key": "USER_LOCALES",           "value": "en_US.UTF-8 UTF-8"},
                         {"key": "TZ",                     "value": "UTC"},
             ]
@@ -643,13 +644,13 @@ class PlaystoneOrchestrator:
                     "name":              vm_name,
                     "imageName":         GAMING_IMAGE_ID,
                     "gpuTypeId":         current_gpu,
-                    "cloudType":         "ALL",
+                    "cloudType":         "SECURE",
                     "countryCode":       "US",
                     "gpuCount":          1,
                     "ports":             "22/tcp,30000/tcp,47984/tcp,47989/tcp,47990/tcp,47998/udp,47999/udp,48000/udp",
-                    "volumeInGb":        10,
-                    "volumeMountPath":   "/runpod-volume",
-                    "containerDiskInGb": 100,
+                    "volumeInGb":        150,
+                    "volumeMountPath":   "/workspace",
+                    "containerDiskInGb": 150,
                     "minVcpuCount":      2,
                     "minMemoryInGb":     8,
                     "env":               env_vars
@@ -701,7 +702,7 @@ class PlaystoneOrchestrator:
             
             # ── Comprobar si el usuario canceló la sesión desde el frontend ──
             current_status = await get_session_status(session_id)
-            if current_status in ["terminated", "failed"]:
+            if current_status in ["completed", "terminated", "failed"]:
                 print(f"[!] El usuario canceló la sesión {session_id} durante el aprovisionamiento.")
                 print(f"[*] Terminando el pod huérfano {pod_id}...")
                 await self.terminate_pod(pod_id)
