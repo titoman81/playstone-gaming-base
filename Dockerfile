@@ -3,9 +3,9 @@ FROM josh5/steam-headless:latest
 ENV MODE=primary
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Tailscale, Python3, and SSH Server
+# Install Tailscale, Python3, and SSH Server, plus nvidia-xconfig
 RUN curl -fsSL https://tailscale.com/install.sh | sh && \
-    apt-get update && apt-get install -y openssh-server xserver-xorg-video-dummy && \
+    apt-get update && apt-get install -y openssh-server xserver-xorg-video-dummy nvidia-xconfig && \
     mkdir -p /var/run/sshd && \
     echo 'root:playstone' | chpasswd && \
     sed -i 's/#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
