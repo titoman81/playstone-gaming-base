@@ -46,7 +46,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ghcr.io/titoman81/playstone-gaming-base:v9,ghcr.io/titoman81/playstone-gaming-base:main
+          tags: ghcr.io/titoman81/playstone-gaming-base:v10,ghcr.io/titoman81/playstone-gaming-base:main
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
