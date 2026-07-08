@@ -63,3 +63,7 @@ EOF
 
 echo "  - xorg.conf written successfully (no nvidia-xconfig needed)"
 cat /etc/X11/xorg.conf
+
+# CRITICAL: Tell supervisor to actually start Xorg!
+echo "  - Enabling Xorg in supervisor..."
+sed -i 's/autostart=false/autostart=true/g' /etc/supervisor.d/xorg.ini
