@@ -1,14 +1,28 @@
 #!/bin/bash
-# 70-configure_xorg.sh (override)
-# Generates xorg.conf for NVIDIA Headless without manual BusID parsing
+echo "**** Configure Xorg with NVIDIA BusID ****"
 
-# Removed set -e so failures don't crash the entire s6-overlay container
-echo "  - Generating generic NVIDIA headless xorg.conf..."
+# Obtener BusID desde nvidia-smi para evitar fallos de auto-detección en Xorg
+raw_bus=$(nvidia-smi --format=csv,noheader --query-gpu=pci.bus_id 2>/dev/null | head -n1)
+bus_id=""
 
-DISPLAY_SIZEW="${DISPLAY_SIZEW:-1920}"
-DISPLAY_SIZEH="${DISPLAY_SIZEH:-1080}"
+if [ -n "$raw_bus" ] && [ "$raw_bus" != "[Not Supported]" ]; then
+    bus_hex=$(echo "$raw_bus" | awk -F: '{print $2}')
+    if [ -n "$bus_hex" ]; then
+        bus_dec=$(printf '%d' "0x${bus_hex}" 2>/dev/null)
+        if [ -n "$bus_dec" ]; then
+            dev=$(echo "$raw_bus" | awk -F: '{print $3}' | cut -d'.' -f1)
+            func=$(echo "$raw_bus" | awk -F: '{print $3}' | cut -d'.' -f2)
+            bus_id="PCI:${bus_dec}:${dev}:${func}"
+        fi
+    fi
+fi
 
-mkdir -p /etc/X11
+if [ -z "$bus_id" ]; then
+    echo "WARNING: Could not parse NVIDIA BusID. Xorg may fail to detect the GPU."
+else
+    echo "Extracted NVIDIA BusID: $bus_id"
+fi
+
 cat > /etc/X11/xorg.conf << EOF
 Section "ServerLayout"
     Identifier     "Layout0"
@@ -19,6 +33,13 @@ Section "Device"
     Identifier     "Device0"
     Driver         "nvidia"
     VendorName     "NVIDIA Corporation"
+EOF
+
+if [ -n "$bus_id" ]; then
+    echo "    BusID          \"${bus_id}\"" >> /etc/X11/xorg.conf
+fi
+
+cat >> /etc/X11/xorg.conf << EOF
     Option         "AllowEmptyInitialConfiguration"
     Option         "NoLogo" "true"
     Option         "UseDisplayDevice" "None"
@@ -39,14 +60,7 @@ Section "Screen"
     DefaultDepth    24
     SubSection "Display"
         Depth       24
-        Virtual     ${DISPLAY_SIZEW} ${DISPLAY_SIZEH}
+        Virtual     1920 1080
     EndSubSection
 EndSection
 EOF
-
-echo "  - xorg.conf written successfully."
-cat /etc/X11/xorg.conf
-
-# CRITICAL: Tell supervisor to actually start Xorg!
-echo "  - Enabling Xorg in supervisor..."
-sed -i 's/autostart=false/autostart=true/g' /etc/supervisor.d/xorg.ini
