@@ -42,7 +42,6 @@ fi
 cat >> /etc/X11/xorg.conf << EOF
     Option         "AllowEmptyInitialConfiguration"
     Option         "NoLogo" "true"
-    Option         "UseDisplayDevice" "None"
     Option         "ConnectedMonitor" "DFP-0"
 EndSection
 

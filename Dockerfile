@@ -28,9 +28,6 @@ RUN rm -f /etc/cont-init.d/60-configure_gpu_driver.sh
 COPY agent/70-configure_xorg.sh /etc/cont-init.d/70-configure_xorg.sh
 RUN chmod +x /etc/cont-init.d/70-configure_xorg.sh
 
-# Sunshine capture mode: ensure x11 capture is set.
-COPY agent/99-fix-xorg.sh /etc/cont-init.d/99-fix-xorg.sh
-RUN chmod +x /etc/cont-init.d/99-fix-xorg.sh
 
 # Prevent 80-configure_flatpak.sh from crashing the container when it tries to remount /proc unprivileged
 RUN sed -i 's|mount -t proc none /proc|echo "Ignored unprivileged mount /proc"|g' /etc/cont-init.d/80-configure_flatpak.sh
