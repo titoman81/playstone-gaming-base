@@ -35,6 +35,18 @@ RUN chmod +x /etc/cont-init.d/99-fix-xorg.sh
 # Prevent 80-configure_flatpak.sh from crashing the container when it tries to remount /proc unprivileged
 RUN sed -i 's|mount -t proc none /proc|echo "Ignored unprivileged mount /proc"|g' /etc/cont-init.d/80-configure_flatpak.sh
 
+# Fix 1: Create /dev/uinput at startup so Sunshine can inject virtual mouse/keyboard events.
+# RunPod Secure Cloud does not expose this device by default. This script reads the
+# major:minor from /sys/class/misc/uinput and tries cgroup allow + mknod.
+COPY agent/25-fix-uinput.sh /etc/cont-init.d/25-fix-uinput.sh
+RUN chmod +x /etc/cont-init.d/25-fix-uinput.sh
+
+# Fix 2: Pre-accept Steam EULA and enable Steam in supervisord.
+# The base image's steam supervisor program has autostart=false and the installer
+# shows a zenity GUI dialog for EULA acceptance — both invisible in headless mode.
+COPY agent/91-configure-steam.sh /etc/cont-init.d/91-configure-steam.sh
+RUN chmod +x /etc/cont-init.d/91-configure-steam.sh
+
 RUN mkdir -p /home/default/init.d
 COPY agent/vm_startup.sh /home/default/init.d/playstone_startup.sh
 RUN chmod +x /home/default/init.d/playstone_startup.sh

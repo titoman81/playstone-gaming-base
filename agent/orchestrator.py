@@ -34,7 +34,7 @@ runpod.api_key   = RUNPOD_API_KEY
 #   4. Actualizar GAMING_IMAGE_ID en .env con tu imagen (ahora usamos la oficial por defecto).
 GAMING_IMAGE_ID = os.getenv(
     "GAMING_IMAGE_ID",
-    "ghcr.io/titoman81/playstone-gaming-base:v11"
+    "ghcr.io/titoman81/playstone-gaming-base:v12"
 )
 
 SUPABASE_URL     = os.getenv("SUPABASE_URL", "")
@@ -285,8 +285,8 @@ def _pair_moonlight_pin(ip: str, ssh_port: int, web_port: int, pin: str) -> bool
     import requests
     url = f"https://{ip}:{web_port}/api/pin"
     try:
-        # Probamos primero el REST API asumiendo que vm_startup.sh configuró admin:admin
-        res = requests.post(url, json={"pin": pin}, auth=("admin", "admin"), verify=False, timeout=10)
+        # Probamos primero el REST API con credenciales playstone:playstone123
+        res = requests.post(url, json={"pin": pin, "salt": "", "secret": ""}, auth=("playstone", "playstone123"), verify=False, timeout=10)
         if res.status_code == 200:
             print(f"[+] [REST-PIN] PIN {pin} procesado por REST.")
             return True
@@ -312,10 +312,9 @@ def _pair_moonlight_pin_ssh(ip: str, ssh_port: int, pin: str) -> bool:
             echo "$SSH_KEY_PUB" >> /root/.ssh/authorized_keys
             chmod 600 /root/.ssh/authorized_keys
         fi
-        sunshine --creds admin admin
-        sunshine -p {pin}
+        timeout 5 su - default -c "sunshine -p {pin}" || true
         """
-        stdin, stdout, stderr = client.exec_command(cmd, timeout=15)
+        stdin, stdout, stderr = client.exec_command(cmd, timeout=10)
         out = stdout.read().decode()
         client.close()
         
@@ -640,6 +639,11 @@ class PlaystoneOrchestrator:
                         # USER_PASSWORD es leida por 10-setup_user.sh de steam-headless
                         # y hace: echo "root:${USER_PASSWORD}" | chpasswd
                         {"key": "USER_PASSWORD",          "value": "playstone"},
+                        # ── Fix: aceptar EULA de Steam automáticamente ───────────────
+                        # Evita que el instalador de Debian muestre la ventana zenity
+                        # que bloquea la instalación de Steam al no haber pantalla interactiva
+                        {"key": "STEAM_EULA_ACCEPTED",    "value": "1"},
+                        {"key": "ACCEPT_EULA",            "value": "1"},
             ]
             if steam_username: env_vars.append({"key": "STEAM_USERNAME", "value": steam_username})
             if steam_password: env_vars.append({"key": "STEAM_PASSWORD", "value": steam_password})
@@ -649,7 +653,7 @@ class PlaystoneOrchestrator:
                     "name":              vm_name,
                     "imageName":         GAMING_IMAGE_ID,
                     "gpuTypeId":         current_gpu,
-                    "cloudType":         "SECURE",
+                    "cloudType":         "COMMUNITY",
                     "countryCode":       "US",
                     "gpuCount":          1,
                     "ports":             "22/tcp,30000/tcp,47984/tcp,47989/tcp,47990/tcp,47998/udp,47999/udp,48000/udp",

@@ -1,5 +1,28 @@
 #!/bin/bash
 
+# --- INYECCIÓN PARA CONFIGURACIÓN DE GPU ---
+# Configurar Xorg y permisos
+if [ -d /dev/dri ]; then
+    chmod a+rw /dev/dri/* || true
+fi
+chmod a+rw /dev/nvidia* || true
+if [ ! -e /dev/uinput ]; then
+    mknod /dev/uinput c 10 223 || true
+fi
+chmod 666 /dev/uinput || true
+
+if [ -f /usr/lib/x86_64-linux-gnu/nvidia/xorg/nvidia_drv.so ] && [ ! -f /usr/lib/xorg/modules/drivers/nvidia_drv.so ]; then
+    mkdir -p /usr/lib/xorg/modules/drivers/
+    ln -s /usr/lib/x86_64-linux-gnu/nvidia/xorg/nvidia_drv.so /usr/lib/xorg/modules/drivers/nvidia_drv.so
+fi
+
+# Install and configure NVIDIA Xorg properly
+apt-get update && apt-get install -y nvidia-xconfig
+nvidia-xconfig --allow-empty-initial-configuration --use-display-device="None" --virtual=1920x1080 --connected-monitor="DFP-0"
+supervisorctl restart xorg sunshine || true
+# --- FIN INYECCIÓN ---
+
+
 # ════════════════════════════════════════════════════════════════════════════════
 # Playstone Cloud Gaming - Startup Script v4.0 (Steam-Headless Edition)
 # ════════════════════════════════════════════════════════════════════════════════
@@ -84,6 +107,8 @@ if [ -n "$TAILSCALE_AUTHKEY" ]; then
     ELAPSED=0
     while [ $ELAPSED -lt $MAX_WAIT ]; do
         if grep -q "PIN =" /var/log/supervisor/sunshine-stdout*.log 2>/dev/null; then
+            # Esperar a que la VM asigne la IP
+            IP=$(hostname -I | awk '{print $1}')
             MOONLIGHT_PIN=$(grep "PIN =" /var/log/supervisor/sunshine-stdout*.log | tail -n 1 | awk '{print $NF}')
             if [ -n "$MOONLIGHT_PIN" ]; then
                 echo "[OK] PIN de Moonlight generado: $MOONLIGHT_PIN"
@@ -105,7 +130,7 @@ if [ -n "$TAILSCALE_AUTHKEY" ]; then
                      -H "apikey: ${SUPABASE_KEY}" \
                      -H "Authorization: Bearer ${SUPABASE_KEY}" \
                      -H "Content-Type: application/json" \
-                     -d "{\"status\": \"playing\", \"moonlight_pin\": \"MANUAL\"}" > /dev/null 2>&1 || true
+                     -d "{\"status\": \"ready\"}" > /dev/null 2>&1 || true
                 break
             fi
         fi
