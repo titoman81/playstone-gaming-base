@@ -27,37 +27,34 @@ fi
 # Use printf to avoid heredoc quoting issues in container init environments
 XORG_CONF="/etc/X11/xorg.conf"
 
-printf 'Section "ServerLayout"\n' > "$XORG_CONF"
-printf '    Identifier     "Layout0"\n' >> "$XORG_CONF"
-printf '    Screen      0  "Screen0"\n' >> "$XORG_CONF"
-printf 'EndSection\n\n' >> "$XORG_CONF"
-
-printf 'Section "Device"\n' >> "$XORG_CONF"
-printf '    Identifier     "Device0"\n' >> "$XORG_CONF"
-printf '    Driver         "nvidia"\n' >> "$XORG_CONF"
-printf '    VendorName     "NVIDIA Corporation"\n' >> "$XORG_CONF"
-printf '    BusID          "%s"\n' "$bus_id" >> "$XORG_CONF"
-printf '    Option         "AllowEmptyInitialConfiguration" "True"\n' >> "$XORG_CONF"
-printf '    Option         "NoLogo" "true"\n' >> "$XORG_CONF"
+printf 'Section "Device"\n' > "$XORG_CONF"
+printf '    Identifier  "Configured Video Device"\n' >> "$XORG_CONF"
+printf '    Driver      "dummy"\n' >> "$XORG_CONF"
+printf '    VideoRam    256000\n' >> "$XORG_CONF"
 printf 'EndSection\n\n' >> "$XORG_CONF"
 
 printf 'Section "Monitor"\n' >> "$XORG_CONF"
-printf '    Identifier     "Monitor0"\n' >> "$XORG_CONF"
-printf '    VendorName     "Unknown"\n' >> "$XORG_CONF"
-printf '    ModelName      "Unknown"\n' >> "$XORG_CONF"
-printf '    Option         "DPMS"\n' >> "$XORG_CONF"
+printf '    Identifier  "Configured Monitor"\n' >> "$XORG_CONF"
+printf '    HorizSync   31.5 - 133.0\n' >> "$XORG_CONF"
+printf '    VertRefresh 50.0 - 120.0\n' >> "$XORG_CONF"
 printf 'EndSection\n\n' >> "$XORG_CONF"
 
 printf 'Section "Screen"\n' >> "$XORG_CONF"
-printf '    Identifier     "Screen0"\n' >> "$XORG_CONF"
-printf '    Device         "Device0"\n' >> "$XORG_CONF"
-printf '    Monitor        "Monitor0"\n' >> "$XORG_CONF"
-printf '    DefaultDepth    24\n' >> "$XORG_CONF"
+printf '    Identifier  "Default Screen"\n' >> "$XORG_CONF"
+printf '    Monitor     "Configured Monitor"\n' >> "$XORG_CONF"
+printf '    Device      "Configured Video Device"\n' >> "$XORG_CONF"
+printf '    DefaultDepth 24\n' >> "$XORG_CONF"
 printf '    SubSection "Display"\n' >> "$XORG_CONF"
-printf '        Depth       24\n' >> "$XORG_CONF"
-printf '        Virtual     1920 1080\n' >> "$XORG_CONF"
+printf '        Depth 24\n' >> "$XORG_CONF"
+printf '        Modes "1920x1080"\n' >> "$XORG_CONF"
 printf '    EndSubSection\n' >> "$XORG_CONF"
-printf 'EndSection\n' >> "$XORG_CONF"
 
 echo "Xorg config written to $XORG_CONF:"
 cat "$XORG_CONF"
+
+# ENABLE XORG IN SUPERVISORD
+# The base image has autostart=false for xorg by default. It relied on the original script
+# to enable it if a GPU was found. Since we replaced the script, we must enable it manually.
+if [ -f /etc/supervisor.d/xorg.ini ]; then
+    sed -i 's|^autostart.*=.*false|autostart=true|' /etc/supervisor.d/xorg.ini
+fi

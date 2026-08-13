@@ -1,26 +1,5 @@
 #!/bin/bash
 
-# --- INYECCIÓN PARA CONFIGURACIÓN DE GPU ---
-# Configurar Xorg y permisos
-if [ -d /dev/dri ]; then
-    chmod a+rw /dev/dri/* || true
-fi
-chmod a+rw /dev/nvidia* || true
-if [ ! -e /dev/uinput ]; then
-    mknod /dev/uinput c 10 223 || true
-fi
-chmod 666 /dev/uinput || true
-
-if [ -f /usr/lib/x86_64-linux-gnu/nvidia/xorg/nvidia_drv.so ] && [ ! -f /usr/lib/xorg/modules/drivers/nvidia_drv.so ]; then
-    mkdir -p /usr/lib/xorg/modules/drivers/
-    ln -s /usr/lib/x86_64-linux-gnu/nvidia/xorg/nvidia_drv.so /usr/lib/xorg/modules/drivers/nvidia_drv.so
-fi
-
-# Install and configure NVIDIA Xorg properly
-apt-get update && apt-get install -y nvidia-xconfig
-nvidia-xconfig --allow-empty-initial-configuration --use-display-device="None" --virtual=1920x1080 --connected-monitor="DFP-0"
-supervisorctl restart xorg sunshine || true
-# --- FIN INYECCIÓN ---
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -84,6 +63,7 @@ if [ -f /home/default/.config/sunshine/sunshine.conf ]; then
 fi
 echo "capture = x11" >> /home/default/.config/sunshine/sunshine.conf
 chown -R default:default /home/default/.config/sunshine
+supervisorctl restart sunshine || true
 
 if [ -n "$TAILSCALE_AUTHKEY" ]; then
     echo "[INIT] Conectando Tailscale..."

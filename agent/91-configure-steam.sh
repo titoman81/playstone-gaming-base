@@ -38,6 +38,17 @@ if pgrep -x zenity > /dev/null 2>&1; then
     killall -9 zenity 2>/dev/null || true
 fi
 
+# 3.5 Patch Debian wrapper script to ignore GUI EULA cancellations
+if [ -f "/usr/games/steam" ]; then
+    # Fix: RunPod blocks user namespaces which crashes the new Steam CEF sandbox
+    if [ -f /etc/supervisor.d/steam.ini ]; then
+        sed -i 's|command=/usr/games/steam.*|command=/usr/games/steam %(ENV_STEAM_ARGS)s -no-cef-sandbox|' /etc/supervisor.d/steam.ini
+    fi
+
+    print_step "Patching /usr/games/steam wrapper to bypass zenity crashes..."
+    python3 -c "import os; f='/usr/games/steam'; c=open(f).read().replace('echo \"steam: Installation cancelled\" >&2\\n        exit 1', 'echo \"steam: Installation auto-accepted by PlayStone\" >&2'); open(f,'w').write(c)" || true
+fi
+
 # 4. Enable Steam in supervisord (base image has autostart=false by default)
 if [[ "${ENABLE_STEAM:-true}" == "true" ]]; then
     STEAM_INI="/etc/supervisor.d/steam.ini"
