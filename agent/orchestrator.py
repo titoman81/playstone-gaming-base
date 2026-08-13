@@ -34,7 +34,7 @@ runpod.api_key   = RUNPOD_API_KEY
 #   4. Actualizar GAMING_IMAGE_ID en .env con tu imagen (ahora usamos la oficial por defecto).
 GAMING_IMAGE_ID = os.getenv(
     "GAMING_IMAGE_ID",
-    "ghcr.io/titoman81/playstone-gaming-base:v15"
+    "ghcr.io/titoman81/playstone-gaming-base:v16"
 )
 
 SUPABASE_URL     = os.getenv("SUPABASE_URL", "")
@@ -634,6 +634,11 @@ class PlaystoneOrchestrator:
                         {"key": "SUNSHINE_PASS",          "value": "playstone123"},
                         {"key": "USER_LOCALES",           "value": "en_US.UTF-8 UTF-8"},
                         {"key": "TZ",                     "value": "UTC"},
+                        # ── Input: usar XTest (vía evdev interno de steam-headless) ──
+                        # ENABLE_EVDEV_INPUTS=true hace que steam-headless use el driver
+                        # de input de Xorg (XTest) en lugar de /dev/uinput que RunPod
+                        # Community Cloud bloquea por restricciones de cgroup.
+                        {"key": "ENABLE_EVDEV_INPUTS",   "value": "true"},
             
                         # SSH: password para que SSHD acepte conexiones desde el inicio
                         # USER_PASSWORD es leida por 10-setup_user.sh de steam-headless
@@ -663,7 +668,6 @@ class PlaystoneOrchestrator:
                     "minVcpuCount":      2,
                     "minMemoryInGb":     8,
                     "env":               env_vars,
-                    "dockerArgs":        "--device /dev/input --device /dev/uinput"
                 }
             }
 
