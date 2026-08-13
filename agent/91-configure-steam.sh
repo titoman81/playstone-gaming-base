@@ -40,16 +40,27 @@ fi
 
 # 3.5 Patch Debian wrapper script to ignore GUI EULA cancellations
 if [ -f "/usr/games/steam" ]; then
-    # Fix: RunPod blocks user namespaces which crashes the new Steam CEF sandbox
-    if [ -f /etc/supervisor.d/steam.ini ]; then
-        cat << 'EOF' > /usr/games/steam-wrapper
+    # Auto-detect if RunPod/Container allows unprivileged user namespaces
+    if unshare --user --map-root-user /bin/true 2>/dev/null; then
+        print_ok "User namespaces are ENABLED natively. Steam will run with full sandbox security."
+        if [ -f /etc/supervisor.d/steam.ini ]; then
+            # Ensure -no-cef-sandbox is NOT present, and it runs directly
+            sed -i 's|command=/usr/games/steam-wrapper.*|command=/usr/games/steam %(ENV_STEAM_ARGS)s|' /etc/supervisor.d/steam.ini
+            sed -i 's|command=/usr/games/steam.*|command=/usr/games/steam %(ENV_STEAM_ARGS)s|' /etc/supervisor.d/steam.ini
+            sed -i 's|-no-cef-sandbox||g' /etc/supervisor.d/steam.ini
+        fi
+    else
+        print_step "User namespaces are DISABLED. Applying wrapper to bypass Steam crashes..."
+        if [ -f /etc/supervisor.d/steam.ini ]; then
+            cat << 'EOF' > /usr/games/steam-wrapper
 #!/bin/bash
 rm -f /home/default/.steam/ubuntu12_32/steam-runtime/amd64/usr/bin/steam-runtime-check-requirements 2>/dev/null
 ln -s /bin/true /home/default/.steam/ubuntu12_32/steam-runtime/amd64/usr/bin/steam-runtime-check-requirements 2>/dev/null
 exec /usr/games/steam "$@"
 EOF
-        chmod +x /usr/games/steam-wrapper
-        sed -i 's|command=/usr/games/steam.*|command=/usr/games/steam-wrapper %(ENV_STEAM_ARGS)s -no-cef-sandbox|' /etc/supervisor.d/steam.ini
+            chmod +x /usr/games/steam-wrapper
+            sed -i 's|command=/usr/games/steam.*|command=/usr/games/steam-wrapper %(ENV_STEAM_ARGS)s -no-cef-sandbox|' /etc/supervisor.d/steam.ini
+        fi
     fi
 
     print_step "Patching /usr/games/steam wrapper to bypass zenity crashes..."
