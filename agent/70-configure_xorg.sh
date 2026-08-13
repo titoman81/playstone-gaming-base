@@ -70,3 +70,8 @@ printf 'Section "Files"\n' >> "$XORG_CONF"
 printf '    ModulePath "/usr/lib/x86_64-linux-gnu/nvidia/xorg"\n' >> "$XORG_CONF"
 printf '    ModulePath "/usr/lib/xorg/modules"\n' >> "$XORG_CONF"
 printf 'EndSection\n\n' >> "$XORG_CONF"
+
+printf 'Section "Extensions"\n' >> "$XORG_CONF"
+printf '    Option "MIT-SHM" "Disable"\n' >> "$XORG_CONF"
+printf 'EndSection\n\n' >> "$XORG_CONF"
+

@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 ###
 # 91-configure-steam.sh
 # Playstone Gaming - Pre-accept Steam EULA and activate Steam via supervisord
