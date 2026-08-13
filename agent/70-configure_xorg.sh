@@ -18,48 +18,46 @@ if [ -n "$raw_bus" ] && [ "$raw_bus" != "[Not Supported]" ]; then
 fi
 
 if [ -z "$bus_id" ]; then
-    echo "WARNING: Could not parse NVIDIA BusID. Xorg may fail to detect the GPU."
+    echo "WARNING: Could not parse NVIDIA BusID. Using default PCI:2:0:0."
+    bus_id="PCI:2:0:0"
 else
     echo "Extracted NVIDIA BusID: $bus_id"
 fi
 
-cat > /etc/X11/xorg.conf << EOF
-Section "ServerLayout"
-    Identifier     "Layout0"
-    Screen      0  "Screen0"
-EndSection
+# Use printf to avoid heredoc quoting issues in container init environments
+XORG_CONF="/etc/X11/xorg.conf"
 
-Section "Device"
-    Identifier     "Device0"
-    Driver         "nvidia"
-    VendorName     "NVIDIA Corporation"
-EOF
+printf 'Section "ServerLayout"\n' > "$XORG_CONF"
+printf '    Identifier     "Layout0"\n' >> "$XORG_CONF"
+printf '    Screen      0  "Screen0"\n' >> "$XORG_CONF"
+printf 'EndSection\n\n' >> "$XORG_CONF"
 
-if [ -n "$bus_id" ]; then
-    echo "    BusID          \"${bus_id}\"" >> /etc/X11/xorg.conf
-fi
+printf 'Section "Device"\n' >> "$XORG_CONF"
+printf '    Identifier     "Device0"\n' >> "$XORG_CONF"
+printf '    Driver         "nvidia"\n' >> "$XORG_CONF"
+printf '    VendorName     "NVIDIA Corporation"\n' >> "$XORG_CONF"
+printf '    BusID          "%s"\n' "$bus_id" >> "$XORG_CONF"
+printf '    Option         "AllowEmptyInitialConfiguration" "True"\n' >> "$XORG_CONF"
+printf '    Option         "NoLogo" "true"\n' >> "$XORG_CONF"
+printf 'EndSection\n\n' >> "$XORG_CONF"
 
-cat >> /etc/X11/xorg.conf << EOF
-    Option         "AllowEmptyInitialConfiguration"
-    Option         "NoLogo" "true"
-    Option         "ConnectedMonitor" "DFP-0"
-EndSection
+printf 'Section "Monitor"\n' >> "$XORG_CONF"
+printf '    Identifier     "Monitor0"\n' >> "$XORG_CONF"
+printf '    VendorName     "Unknown"\n' >> "$XORG_CONF"
+printf '    ModelName      "Unknown"\n' >> "$XORG_CONF"
+printf '    Option         "DPMS"\n' >> "$XORG_CONF"
+printf 'EndSection\n\n' >> "$XORG_CONF"
 
-Section "Monitor"
-    Identifier     "Monitor0"
-    VendorName     "Unknown"
-    ModelName      "Unknown"
-    Option         "DPMS"
-EndSection
+printf 'Section "Screen"\n' >> "$XORG_CONF"
+printf '    Identifier     "Screen0"\n' >> "$XORG_CONF"
+printf '    Device         "Device0"\n' >> "$XORG_CONF"
+printf '    Monitor        "Monitor0"\n' >> "$XORG_CONF"
+printf '    DefaultDepth    24\n' >> "$XORG_CONF"
+printf '    SubSection "Display"\n' >> "$XORG_CONF"
+printf '        Depth       24\n' >> "$XORG_CONF"
+printf '        Virtual     1920 1080\n' >> "$XORG_CONF"
+printf '    EndSubSection\n' >> "$XORG_CONF"
+printf 'EndSection\n' >> "$XORG_CONF"
 
-Section "Screen"
-    Identifier     "Screen0"
-    Device         "Device0"
-    Monitor        "Monitor0"
-    DefaultDepth    24
-    SubSection "Display"
-        Depth       24
-        Virtual     1920 1080
-    EndSubSection
-EndSection
-EOF
+echo "Xorg config written to $XORG_CONF:"
+cat "$XORG_CONF"

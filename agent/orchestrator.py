@@ -34,7 +34,7 @@ runpod.api_key   = RUNPOD_API_KEY
 #   4. Actualizar GAMING_IMAGE_ID en .env con tu imagen (ahora usamos la oficial por defecto).
 GAMING_IMAGE_ID = os.getenv(
     "GAMING_IMAGE_ID",
-    "ghcr.io/titoman81/playstone-gaming-base:v14"
+    "ghcr.io/titoman81/playstone-gaming-base:v15"
 )
 
 SUPABASE_URL     = os.getenv("SUPABASE_URL", "")
@@ -662,7 +662,8 @@ class PlaystoneOrchestrator:
                     "containerDiskInGb": 150,
                     "minVcpuCount":      2,
                     "minMemoryInGb":     8,
-                    "env":               env_vars
+                    "env":               env_vars,
+                    "dockerArgs":        "--device /dev/input --device /dev/uinput"
                 }
             }
 
