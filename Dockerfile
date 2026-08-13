@@ -48,6 +48,10 @@ RUN chmod +x /etc/cont-init.d/70-configure_xorg.sh
 # Prevent 80-configure_flatpak.sh from crashing the container when it tries to remount /proc unprivileged
 RUN sed -i 's|mount -t proc none /proc|echo "Ignored unprivileged mount /proc"|g' /etc/cont-init.d/80-configure_flatpak.sh
 
+# Fix 1.5: Create dummy /dev/uinput node so Sunshine doesn't crash
+COPY agent/25-fix-uinput.sh /etc/cont-init.d/25-fix-uinput.sh
+RUN chmod +x /etc/cont-init.d/25-fix-uinput.sh
+
 # Fix 1: Pre-accept Steam EULA and enable Steam in supervisord.
 # The base image's steam supervisor program has autostart=false and the installer
 # shows a zenity GUI dialog for EULA acceptance — both invisible in headless mode.
