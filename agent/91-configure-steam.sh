@@ -52,4 +52,3 @@ fi
 
 print_ok "Steam configuration complete."
 echo -e "\e[34mDONE\e[0m"
-exit 0

@@ -5,8 +5,6 @@
 # might panic if the device file doesn't exist at all.
 
 if [ ! -e /dev/uinput ]; then
-    mknod /dev/uinput c 10 223 2>/dev/null || true
+    touch /dev/uinput 2>/dev/null || true
     chmod 0666 /dev/uinput 2>/dev/null || true
 fi
-
-exit 0

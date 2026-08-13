@@ -20,12 +20,18 @@ RUN curl -fsSL https://tailscale.com/install.sh | sh && \
 #
 # Sunshine v0.21.0 uses libXtst/XTest which works purely via X11 - no kernel
 # device needed. This is the last version with reliable XTest input on Linux.
+# We use the AppImage and extract it because the deb package has dependency issues on Debian 13 (Trixie)
 RUN apt-get update && \
     apt-get install -y libxtst6 libxrandr2 libxfixes3 libevdev2 || true && \
-    SUNSHINE_DEB_URL="https://github.com/LizardByte/Sunshine/releases/download/v0.21.0/sunshine-ubuntu-22.04-amd64.deb" && \
-    curl -L -o /tmp/sunshine-0.21.0.deb "$SUNSHINE_DEB_URL" && \
-    dpkg -i /tmp/sunshine-0.21.0.deb || apt-get install -f -y && \
-    rm -f /tmp/sunshine-0.21.0.deb && \
+    SUNSHINE_APPIMAGE_URL="https://github.com/LizardByte/Sunshine/releases/download/v0.21.0/sunshine.AppImage" && \
+    curl -L -o /tmp/sunshine.AppImage "$SUNSHINE_APPIMAGE_URL" && \
+    chmod +x /tmp/sunshine.AppImage && \
+    cd /opt && /tmp/sunshine.AppImage --appimage-extract && \
+    mv squashfs-root sunshine && \
+    rm -f /tmp/sunshine.AppImage && \
+    echo '#!/bin/bash' > /usr/bin/sunshine && \
+    echo 'exec /opt/sunshine/AppRun "$@"' >> /usr/bin/sunshine && \
+    chmod +x /usr/bin/sunshine && \
     echo "[Dockerfile] Sunshine version installed:" && \
     (sunshine --version 2>/dev/null || /usr/bin/sunshine --version 2>/dev/null || echo "sunshine binary ready")
 
