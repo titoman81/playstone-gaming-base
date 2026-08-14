@@ -47,7 +47,7 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/playstone-gaming-base:v25
+            ghcr.io/${{ github.repository_owner }}/playstone-gaming-base:v26
             ghcr.io/${{ github.repository_owner }}/playstone-gaming-base:latest
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
