@@ -39,7 +39,17 @@ printf '    VendorName     "NVIDIA Corporation"\n' >> "$XORG_CONF"
 printf '    BusID          "%s"\n' "$bus_id" >> "$XORG_CONF"
 printf '    Option         "AllowEmptyInitialConfiguration" "True"\n' >> "$XORG_CONF"
 printf '    Option         "NoLogo" "true"\n' >> "$XORG_CONF"
+printf '    Option         "UseDisplayDevice" "None"\n' >> "$XORG_CONF"
+printf '    Option         "ConnectedMonitor" "DFP-0"\n' >> "$XORG_CONF"
+printf '    Option         "PrimaryGPU" "yes"\n' >> "$XORG_CONF"
+printf '    Option         "AllowExternalGpus" "True"\n' >> "$XORG_CONF"
 printf 'EndSection\n\n' >> "$XORG_CONF"
+
+# Create Xwrapper.config to ensure Xorg can acquire DRM master
+if [[ ! -f /etc/X11/Xwrapper.config ]]; then
+    echo 'allowed_users=anybody' > /etc/X11/Xwrapper.config
+    echo 'needs_root_rights=yes' >> /etc/X11/Xwrapper.config
+fi
 
 printf 'Section "Monitor"\n' >> "$XORG_CONF"
 printf '    Identifier     "Monitor0"\n' >> "$XORG_CONF"
